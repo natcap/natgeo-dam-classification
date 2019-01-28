@@ -1,4 +1,5 @@
 """Create a sentinel sqlite database index."""
+import itertools
 import csv
 import gzip
 import shutil
@@ -64,6 +65,9 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
         header_line = next(csv_reader)
         sample_first_line = next(csv_reader)
 
+        # put sample first line back
+        csv_reader = itertools.chain([sample_first_line], csv_reader)
+
         column_text = ''.join([
             f'{column_id} {"FLOAT" if is_str_float(column_val) else "TEXT"} NOT NULL, '
             for column_id, column_val in zip(header_line, sample_first_line)])
@@ -91,8 +95,10 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
         with sqlite3.connect(target_sqlite_path) as conn:
             cursor = conn.cursor()
             cursor.executescript(sql_create_index_table)
-
-        LOGGER.debug(header_line)
+            for line in csv_reader:
+                cursor.execute(
+                    f"""INSERT OR REPLACE INTO sentinel_index VALUES ({
+                        ', '.join(['?']*len(header_line))})""", line)
 
 
 def is_str_float(val):
