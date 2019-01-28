@@ -1,21 +1,24 @@
 """Create a sentinel sqlite database index."""
-import itertools
+import time
 import csv
 import gzip
+import zipfile
 import shutil
-import re
 import sys
 import os
 import logging
 import sqlite3
+import reproduce
 
-import google.cloud.storage
 import taskgraph
 
 WORKSPACE_DIR = 'workspace'
-SENTINEL_CSV_INDEX_GS = 'gs://gcp-public-data-sentinel-2/index.csv.gz'
-SENTINEL_CSV_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
+SENTINEL_CSV_INDEX_GS_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
+SENTINEL_CSV_GZ_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
 SENTINEL_SQLITE_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.db')
+DAM_POINT_VECTOR_BUCKET_ID_PATH = (
+    'natgeo-data-bucket',
+    'GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
 
 logging.getLogger('taskgraph').setLevel(logging.INFO)
@@ -35,21 +38,27 @@ def main():
     except OSError:
         pass
 
-    task_graph = taskgraph.TaskGraph(WORKSPACE_DIR, -1, 5.0)
+    task_graph = taskgraph.TaskGraph(WORKSPACE_DIR, 4, 5.0)
 
     download_index_task = task_graph.add_task(
-        func=google_bucket_fetcher(
-            SENTINEL_CSV_INDEX_GS, IAM_TOKEN_PATH),
-        args=(SENTINEL_CSV_PATH,),
-        target_path_list=[SENTINEL_CSV_PATH],
+        func=reproduce.utils.google_bucket_fetch(
+            SENTINEL_CSV_INDEX_GS_TUPLE[0], SENTINEL_CSV_INDEX_GS_TUPLE[1],
+            IAM_TOKEN_PATH, SENTINEL_CSV_GZ_PATH),
+        args=(SENTINEL_CSV_GZ_PATH,),
+        target_path_list=[SENTINEL_CSV_GZ_PATH],
         task_name=f'fetch sentinel index')
 
     task_graph.add_task(
         func=gzip_csv_to_sqlite,
-        args=(SENTINEL_CSV_PATH, SENTINEL_SQLITE_PATH),
+        args=(SENTINEL_CSV_GZ_PATH, SENTINEL_SQLITE_PATH),
         target_path_list=[SENTINEL_SQLITE_PATH],
         dependent_task_list=[download_index_task],
         task_name='unzip index csv')
+
+    target_dam_vector_dir = WORKSPACE_DIR
+    dam_fetch_unzip_task = fetch_and_unzip(
+        task_graph, DAM_POINT_VECTOR_BUCKET_ID_PATH, IAM_TOKEN_PATH,
+        target_dam_vector_dir)
 
     task_graph.close()
     task_graph.join()
@@ -64,9 +73,6 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
         csv_reader = csv.reader(f_in)
         header_line = next(csv_reader)
         sample_first_line = next(csv_reader)
-
-        # put sample first line back
-        csv_reader = itertools.chain([sample_first_line], csv_reader)
 
         column_text = ''.join([
             f'{column_id} {"FLOAT" if is_str_float(column_val) else "TEXT"} NOT NULL, '
@@ -92,7 +98,14 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
 
         LOGGER.debug(sql_create_index_table)
 
+        LOGGER.info("building index")
+        # reset to start and chomp the header row
+        f_in.seek(0)
+        header_line = next(csv_reader)
+
         line_count = 0
+        n_bytes = 0
+        last_time = time.time()
         with sqlite3.connect(target_sqlite_path) as conn:
             cursor = conn.cursor()
             cursor.executescript(sql_create_index_table)
@@ -100,9 +113,12 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
                 cursor.execute(
                     f"""INSERT OR REPLACE INTO sentinel_index VALUES ({
                         ', '.join(['?']*len(header_line))})""", line)
-                if line_count % 10000 == 0:
-                    LOGGER.info("inserted %d records", line_count)
+                current_time = time.time()
+                if current_time - last_time > 5.0:
+                    last_time = current_time
+                    LOGGER.info("inserted %d lines", line_count)
                 line_count += 1
+                n_bytes += len(''.join(line))
 
 
 def is_str_float(val):
@@ -121,39 +137,66 @@ def gunzip(base_path, target_path):
             shutil.copyfileobj(f_in, f_out)
 
 
-def google_bucket_fetcher(url, json_key_path):
-    """Closure for a function to download a Google Blob to a given path.
+def unzip(zipfile_path, target_dir, touchfile_path):
+    """Unzip contents of `zipfile_path`.
 
     Parameters:
-        url (string): url to blob, matches the form
-            '^https://storage.cloud.google.com/([^/]*)/(.*)$'
-        json_key_path (string): path to Google Cloud private key generated
-            by https://cloud.google.com/iam/docs/creating-managing-service-account-keys
+        zipfile_path (string): path to a zipped file.
+        target_dir (string): path to extract zip file to.
+        touchfile_path (string): path to a file to create if unzipping is
+            successful.
 
     Returns:
-        a function with a single `path` argument to the target file. Invoking
-            this function will download the Blob to `path`.
+        None.
 
     """
-    def _google_bucket_fetcher(path):
-        """Fetch blob `url` to `path`."""
-        if url.startswith('https'):
-            url_matcher = re.match(r'^https://[^/]*\.com/([^/]*)/(.*)$', url)
-        elif url.startswith('gs'):
-            url_matcher = re.match(r'^gs://([^/]*)/(.*)$', url)
+    with zipfile.ZipFile(zipfile_path, 'r') as zip_ref:
+        zip_ref.extractall(target_dir)
 
-        LOGGER.debug(url)
-        client = google.cloud.storage.client.Client.from_service_account_json(
-            json_key_path)
-        bucket_id = url_matcher.group(1)
-        LOGGER.debug(f'parsing bucket {bucket_id} from {url}')
-        bucket = client.get_bucket(bucket_id)
-        blob_id = url_matcher.group(2)
-        LOGGER.debug(f'loading blob {blob_id} from {url}')
-        blob = google.cloud.storage.Blob(blob_id, bucket)
-        LOGGER.info(f'downloading blob {path} from {url}')
-        blob.download_to_filename(path)
-    return _google_bucket_fetcher
+    with open(touchfile_path, 'w') as touchfile:
+        touchfile.write(f'unzipped {zipfile_path}')
+
+
+def fetch_and_unzip(
+        task_graph, bucket_id_path_tuple, iam_token_path, target_zipfile_dir):
+    """Schedule a bucket fetch and file unzip.
+
+    Parameters:
+        task_graph (TaskGraph): taskgraph object to schedule download and
+            unzip.
+        bucket_id_path_tuple (tuple): a google bucket id / path tuple for the
+            expected bucket and the path inside it to the zipfile.
+        iam_token_path (str): path to IAM token to access `bucket_id`.
+        target_zipfile_dir (str): desired directory to copy `bucket_path` and
+            unzip its contents. This directory will also have an
+            `os.path.basename(bucket_id_path_tuple[1]).UNZIPPED` file when the
+            unzip task is successful.
+
+    Returns:
+        Task object that when complete will have downloaded and unzipped
+            the files specified above.
+
+    """
+    zipfile_basename = os.path.basename(bucket_id_path_tuple[1])
+    expected_zip_path = os.path.join(target_zipfile_dir, zipfile_basename)
+    fetch_task = task_graph.add_task(
+        func=reproduce.utils.google_bucket_fetch_and_validate,
+        args=(
+            bucket_id_path_tuple[0], bucket_id_path_tuple[1], iam_token_path,
+            expected_zip_path),
+        target_path_list=[expected_zip_path],
+        task_name=f'''fetch {zipfile_basename}''')
+
+    unzip_file_token = f'{expected_zip_path}.UNZIPPED'
+    unzip_task = task_graph.add_task(
+        func=unzip,
+        args=(
+            expected_zip_path, target_zipfile_dir, unzip_file_token),
+        target_path_list=[unzip_file_token],
+        dependent_task_list=[fetch_task],
+        task_name=f'unzip {zipfile_basename}')
+    return unzip_task
+
 
 if __name__ == '__main__':
     main()
