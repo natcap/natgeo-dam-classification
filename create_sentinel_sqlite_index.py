@@ -21,7 +21,7 @@ DAM_POINT_VECTOR_BUCKET_ID_PATH = (
     'GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
 
-logging.getLogger('taskgraph').setLevel(logging.INFO)
+#logging.getLogger('taskgraph').setLevel(logging.INFO)
 logging.basicConfig(
     level=logging.DEBUG,
     format=(
@@ -29,6 +29,8 @@ logging.basicConfig(
         ' [%(funcName)s:%(lineno)d] %(message)s'),
     stream=sys.stdout)
 LOGGER = logging.getLogger(__name__)
+N_WORKERS = 4
+REPORTING_INTERVAL = 5.0
 
 
 def main():
@@ -38,13 +40,14 @@ def main():
     except OSError:
         pass
 
-    task_graph = taskgraph.TaskGraph(WORKSPACE_DIR, 4, 5.0)
+    task_graph = taskgraph.TaskGraph(
+        WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
 
     download_index_task = task_graph.add_task(
-        func=reproduce.utils.google_bucket_fetch(
+        func=reproduce.utils.google_bucket_fetch,
+        args=(
             SENTINEL_CSV_INDEX_GS_TUPLE[0], SENTINEL_CSV_INDEX_GS_TUPLE[1],
             IAM_TOKEN_PATH, SENTINEL_CSV_GZ_PATH),
-        args=(SENTINEL_CSV_GZ_PATH,),
         target_path_list=[SENTINEL_CSV_GZ_PATH],
         task_name=f'fetch sentinel index')
 
@@ -114,7 +117,7 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
                     f"""INSERT OR REPLACE INTO sentinel_index VALUES ({
                         ', '.join(['?']*len(header_line))})""", line)
                 current_time = time.time()
-                if current_time - last_time > 5.0:
+                if current_time - last_time > REPORTING_INTERVAL:
                     last_time = current_time
                     LOGGER.info("inserted %d lines", line_count)
                 line_count += 1
