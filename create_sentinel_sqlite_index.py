@@ -73,9 +73,10 @@ def main():
 
     task_graph.join()
 
+    granules_dir = os.path.join(WORKSPACE_DIR, 'sentinel_granules')
     schedule_grand_sentinel_extraction(
         task_graph, GRAND_VECTOR_PATH, SENTINEL_SQLITE_PATH, IAM_TOKEN_PATH,
-        WORKSPACE_DIR)
+        granules_dir)
 
     task_graph.close()
     task_graph.join()
@@ -139,7 +140,7 @@ def schedule_grand_sentinel_extraction(
                 bucket = client.get_bucket(bucket_id)
                 blob_list = [
                     blob for blob in bucket.list_blobs(prefix=subpath)
-                    if blob.name.endswith('.jp2')]
+                    if blob.name.endswith('TCI.jp2')]
 
                 granule_dir = os.path.join(workspace_dir, result[0])
                 try:
@@ -150,7 +151,14 @@ def schedule_grand_sentinel_extraction(
                 for blob in blob_list:
                     local_blob_path = os.path.join(
                         granule_dir, os.path.basename(blob.name))
-                    blob.download_to_filename(local_blob_path)
+
+                    download_blob_task = task_graph.add_task(
+                        func=reproduce.utils.google_bucket_fetch,
+                        args=(
+                            bucket_id, blob.name,
+                            IAM_TOKEN_PATH, local_blob_path),
+                        target_path_list=[local_blob_path],
+                        task_name=f'fetch {local_blob_path}')
         break
 
         """
