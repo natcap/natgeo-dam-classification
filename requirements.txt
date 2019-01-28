@@ -1,0 +1,8 @@
+# requirements.txt
+
+google.cloud.storage
+gdal
+shapely
+reproduce
+taskgraph
+hg+ssh://hg@bitbucket.org/richsharp/pygeoprocessing#egg=pygeoprocessing@c10d7f257478
