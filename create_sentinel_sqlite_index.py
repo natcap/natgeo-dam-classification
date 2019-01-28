@@ -31,14 +31,15 @@ GRAND_VECTOR_PATH = os.path.join(
 COVERAGE_VECTOR_PATH = os.path.join(WORKSPACE_DIR, 'grand_coverage.gpkg')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
 
-logging.getLogger('taskgraph').setLevel(logging.INFO)
-logging.getLogger('urllib3').setLevel(logging.INFO)
 logging.basicConfig(
     level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
     stream=sys.stdout)
+logging.getLogger('taskgraph').setLevel(logging.INFO)
+logging.getLogger('urllib3').setLevel(logging.INFO)
+logging.getLogger('google').setLevel(logging.INFO)
 LOGGER = logging.getLogger(__name__)
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
@@ -175,7 +176,6 @@ def schedule_grand_sentinel_extraction(
                         target_path_list=[local_bb_image_path],
                         dependent_task_list=[download_blob_task],
                         task_name=f'extract bb from {local_bb_image_path}')
-        break
 
 
 def extract_bounding_box(
