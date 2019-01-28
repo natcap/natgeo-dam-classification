@@ -122,8 +122,8 @@ def schedule_grand_sentinel_extraction(
         grand_point_shapely = shapely.wkb.loads(
             grand_point_geom.ExportToWkb())
 
-        # 300m in degrees at equator
-        grand_bb = grand_point_shapely.buffer(0.002713115198871344).bounds
+        # 2000m bb at equator
+        grand_bb = grand_point_shapely.buffer(2000/110000.0).bounds
 
         with sqlite3.connect(sentinel_sqlite_index_path) as conn:
             cursor = conn.cursor()
