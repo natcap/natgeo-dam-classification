@@ -166,7 +166,7 @@ def schedule_grand_sentinel_extraction(
 
                     local_bb_image_path = (
                         f'''{os.path.splitext(local_blob_path)[0]}_{
-                            grand_id}.png''')
+                            grand_id}.tif''')
                     extract_box_task = task_graph.add_task(
                         func=extract_bounding_box,
                         args=(
