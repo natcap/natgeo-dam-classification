@@ -30,7 +30,8 @@ GRAND_VECTOR_PATH = os.path.join(
 COVERAGE_VECTOR_PATH = os.path.join(WORKSPACE_DIR, 'grand_coverage.gpkg')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
 
-#logging.getLogger('taskgraph').setLevel(logging.INFO)
+logging.getLogger('taskgraph').setLevel(logging.INFO)
+logging.getLogger('urllib3').setLevel(logging.INFO)
 logging.basicConfig(
     level=logging.DEBUG,
     format=(
@@ -156,19 +157,15 @@ def schedule_grand_sentinel_extraction(
                 for blob in blob_list:
                     local_blob_path = os.path.join(
                         granule_dir, os.path.basename(blob.name))
-
                     download_blob_task = task_graph.add_task(
-                        func=reproduce.utils.google_bucket_fetch,
-                        args=(
-                            bucket_id, blob.name,
-                            IAM_TOKEN_PATH, local_blob_path),
+                        func=blob.download_to_filename,
+                        args=(local_blob_path,),
                         target_path_list=[local_blob_path],
-                        task_name=f'fetch {local_blob_path}')
+                        task_name=f'download {local_blob_path}')
 
                     local_bb_image_path = (
                         f'''{os.path.splitext(local_blob_path)[0]}_{
-                            grand_id}.jp2''')
-
+                            grand_id}.png''')
                     extract_box_task = task_graph.add_task(
                         func=extract_bounding_box,
                         args=(
@@ -203,7 +200,7 @@ def extract_bounding_box(
         base_raster_info['projection'])
     pygeoprocessing.warp_raster(
         base_raster_path, base_raster_info['pixel_size'], target_raster_path,
-        'near', target_bb=target_bounding_box)
+        'near', target_bb=target_bounding_box, target_format='PNG')
 
 
 def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
