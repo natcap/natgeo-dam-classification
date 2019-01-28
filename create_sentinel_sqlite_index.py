@@ -13,10 +13,10 @@ import re
 import google.cloud.storage
 from osgeo import gdal
 from osgeo import osr
-from osgeo import ogr
 import shapely.wkb
 import reproduce
 import taskgraph
+import pygeoprocessing
 
 WORKSPACE_DIR = 'workspace'
 SENTINEL_CSV_BUCKET_ID_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
@@ -110,7 +110,12 @@ def schedule_grand_sentinel_extraction(
         iam_token_path)
     grand_vector = gdal.OpenEx(grand_vector_path, gdal.OF_VECTOR)
     grand_layer = grand_vector.GetLayer()
+
+    wgs84_srs = osr.SpatialReference()
+    wgs84_srs.ImportFromEPSG(4326)
+
     for grand_point_feature in grand_layer:
+        grand_id = grand_point_feature.GetField('GRAND_ID')
         grand_point_geom = grand_point_feature.GetGeometryRef()
         grand_point_shapely = shapely.wkb.loads(
             grand_point_geom.ExportToWkb())
@@ -159,27 +164,46 @@ def schedule_grand_sentinel_extraction(
                             IAM_TOKEN_PATH, local_blob_path),
                         target_path_list=[local_blob_path],
                         task_name=f'fetch {local_blob_path}')
+
+                    local_bb_image_path = (
+                        f'''{os.path.splitext(local_blob_path)[0]}_{
+                            grand_id}.jp2''')
+
+                    extract_box_task = task_graph.add_task(
+                        func=extract_bounding_box,
+                        args=(
+                            local_blob_path, grand_bb,
+                            wgs84_srs.ExportToWkt(), local_bb_image_path),
+                        target_path_list=[local_bb_image_path],
+                        dependent_task_list=[download_blob_task],
+                        task_name=f'extract bb from {local_bb_image_path}')
         break
 
-        """
-        # create a bounding box polygon and dump to vector so we can examine
-        # it while the downloads process
-        coverage_vector = gdal.OpenEx(
-            COVERAGE_VECTOR_PATH, gdal.OF_VECTOR | gdal.GA_Update)
-        coverage_layer = coverage_vector.GetLayer()
-        coverage_defn = coverage_layer.GetLayerDefn()
-        grand_bb_feature = ogr.Feature(coverage_defn)
-        grand_bb_feature.SetGeometry(ogr.CreateGeometryFromWkt(grand_bb.wkt))
-        grand_bb_feature.SetField('coverage_or_boundingbox', 'boundingbox')
-        grand_bb_feature.SetField(
-            'grand_id', grand_point_feature.GetField('GRAND_ID'))
-        coverage_layer.CreateFeature(grand_bb_feature)
-        coverage_layer.SyncToDisk()
-        coverage_layer = None
-        coverage_vector = None
-        grand_bb_feature = None
-        """
 
+def extract_bounding_box(
+        base_raster_path, bounding_box_tuple, bounding_box_ref_wkt,
+        target_raster_path):
+    """Extract a smaller box from the base.
+
+    Parameters:
+        base_raster_path (str): base raster
+        bounding_box_tuple (tuple): bounding box to extract in lat/lng coords
+            of the order [xmin, ymin, xmax, ymax].
+        bounding_box_ref_wkt (str): spatial reference of bounding box in wkt.
+        target_raster_path (str): created file that will be extracted from
+            base_raster_path where `bounding_box_tuple` intersects with it.
+
+    Returns:
+        None
+
+    """
+    base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+    target_bounding_box = pygeoprocessing.transform_bounding_box(
+        bounding_box_tuple, bounding_box_ref_wkt,
+        base_raster_info['projection'])
+    pygeoprocessing.warp_raster(
+        base_raster_path, base_raster_info['pixel_size'], target_raster_path,
+        'near', target_bb=target_bounding_box)
 
 
 def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
