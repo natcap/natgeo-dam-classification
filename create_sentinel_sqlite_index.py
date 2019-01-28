@@ -92,6 +92,7 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
 
         LOGGER.debug(sql_create_index_table)
 
+        line_count = 0
         with sqlite3.connect(target_sqlite_path) as conn:
             cursor = conn.cursor()
             cursor.executescript(sql_create_index_table)
@@ -99,6 +100,9 @@ def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):
                 cursor.execute(
                     f"""INSERT OR REPLACE INTO sentinel_index VALUES ({
                         ', '.join(['?']*len(header_line))})""", line)
+                if line_count % 10000 == 0:
+                    LOGGER.info("inserted %d records", line_count)
+                line_count += 1
 
 
 def is_str_float(val):
