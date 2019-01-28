@@ -200,7 +200,7 @@ def extract_bounding_box(
         base_raster_info['projection'])
     pygeoprocessing.warp_raster(
         base_raster_path, base_raster_info['pixel_size'], target_raster_path,
-        'near', target_bb=target_bounding_box, target_format='PNG')
+        'near', target_bb=target_bounding_box, target_raster_format='PNG')
 
 
 def gzip_csv_to_sqlite(base_gz_path, target_sqlite_path):

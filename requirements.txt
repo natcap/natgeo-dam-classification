@@ -6,3 +6,4 @@ shapely
 reproduce
 taskgraph
 hg+ssh://hg@bitbucket.org/richsharp/pygeoprocessing@c10d7f257478#egg=pygeoprocessing
+cython
