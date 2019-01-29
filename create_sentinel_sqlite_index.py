@@ -1,5 +1,5 @@
 """Create a sentinel sqlite database index."""
-import xml.etree.ElementTree
+from lxml import etree
 import subprocess
 import time
 import csv
@@ -167,8 +167,9 @@ def schedule_grand_sentinel_extraction(
                 manifest_task_fetch.join()
 
                 LOGGER.debug(manifest_url)
-                manifest_xml = xml.etree.ElementTree.parse(manifest_path).getroot()
-                LOGGER.debug(manifest_xml)
+                manifest_xml = etree.parse(manifest_path).getroot().xpath(
+                    "//dataObject[@ID = 'IMG_DATA_Band_TCI_Tile1_Data']/*/fileLocation")
+                LOGGER.debug(manifest_xml[0].get('href'))
 
                 """
                 for blob in blob_list:
