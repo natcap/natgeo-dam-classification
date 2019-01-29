@@ -119,6 +119,7 @@ def schedule_grand_sentinel_extraction(
 
     wgs84_srs = osr.SpatialReference()
     wgs84_srs.ImportFromEPSG(4326)
+    wgs84_srs_wkt = wgs84_srs.ExportToWkt()
 
     for grand_point_feature in grand_layer:
         grand_id = grand_point_feature.GetField('GRAND_ID')
@@ -164,32 +165,67 @@ def schedule_grand_sentinel_extraction(
                     args=(manifest_url, manifest_path),
                     target_path_list=[manifest_path],
                     task_name=f'fetch {manifest_url}')
-                manifest_task_fetch.join()
 
-                LOGGER.debug(manifest_url)
-                manifest_xml = etree.parse(manifest_path).getroot().xpath(
-                    "//dataObject[@ID = 'IMG_DATA_Band_TCI_Tile1_Data']/*/fileLocation")
-                granule_url = f"{url_prefix}/{manifest_xml[0].get('href')}"
-                LOGGER.debug(granule_url)
-                granule_path = os.path.join(
-                    granule_dir, os.path.basename(granule_url))
-                granule_task_fetch = task_graph.add_task(
-                    func=urllib.request.urlretrieve,
-                    args=(granule_url, granule_path),
-                    target_path_list=[granule_path],
-                    task_name=f'fetch {granule_url}')
-                granule_task_fetch.join()
-                local_bb_image_path = (
-                    f'''{os.path.splitext(granule_path)[0]}_{
-                        grand_id}.tif''')
-                extract_box_task = task_graph.add_task(
-                    func=extract_bounding_box,
-                    args=(
-                        granule_path, grand_bb,
-                        wgs84_srs.ExportToWkt(), local_bb_image_path),
-                    target_path_list=[local_bb_image_path],
-                    dependent_task_list=[granule_task_fetch],
-                    task_name=f'extract bb from {local_bb_image_path}')
+                for data_tag in ('IMG_DATA_Band_TCI_Tile1_Data',):
+                    complete_token_path = os.path.join(
+                        granule_dir, f'{data_tag}.COMPLETE')
+                    granule_task_fetch = task_graph.add_task(
+                        func=fetch_tile_and_bound_data,
+                        args=(
+                            manifest_path, url_prefix, data_tag,
+                            'grand_%d' % grand_id, grand_bb, wgs84_srs_wkt,
+                            granule_dir, complete_token_path),
+                        dependent_task_list=[manifest_task_fetch],
+                        target_path_list=[complete_token_path],
+                        task_name=f'fetch {data_tag}')
+
+
+def fetch_tile_and_bound_data(
+        manifest_path, url_prefix, data_tag, bound_id_suffix, bounding_box,
+        bounding_box_ref_wkt, target_dir, complete_token_path):
+    """Fetch tile from url defined in manifest_path.
+
+    Parameters:
+        manifest_path (str): path to a SAFE file describing sentinel data.
+        url_prefix (str): url to prepend to any URLs needed by this function.
+        data_tag (str): embedded dataObject tag to fetch.
+        bound_id_suffix (str): this string is appended to the fetched file
+            to define the clipped version by the bounding box.
+        bounding_box (tuple): 4 tuple of the form [xmin, ymin, xmax, ymax].
+        bounding_box_ref_wkt (str): wkt coordinate reference system for
+            `bounding_box`.
+        target_dir (str): path to directory which to download the data object.
+        complete_token_path (str): path to a file to touch when fetch is
+            complete. This helps avoid repeated reexecution when target path
+            is otherwise unknown.
+
+    Returns:
+        None
+
+    """
+    manifest_xml = etree.parse(manifest_path).getroot().xpath(
+        "//dataObject[@ID = 'IMG_DATA_Band_TCI_Tile1_Data']/*/fileLocation")
+    granule_url = f"{url_prefix}/{manifest_xml[0].get('href')}"
+    granule_path = os.path.join(
+        target_dir, os.path.basename(granule_url))
+    urllib.request.urlretrieve(granule_url, granule_path)
+
+    granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
+    target_bounding_box = pygeoprocessing.transform_bounding_box(
+        bounding_box, bounding_box_ref_wkt,
+        granule_raster_info['projection'])
+    # this will be a GeoTIFF, hence the .tif suffix
+    clipped_raster_path = (
+        f'{os.path.splitext(granule_path)[0]}_{bound_id_suffix}.tif')
+    pygeoprocessing.warp_raster(
+        granule_path, granule_raster_info['pixel_size'], clipped_raster_path,
+        'near', target_bb=target_bounding_box)
+    subprocess.run(
+        ['gdal_translate', '-of', 'PNG', clipped_raster_path,
+         f'{os.path.splitext(clipped_raster_path)[0]}.png'])
+
+    with open(complete_token_path, 'w') as complete_token_file:
+        complete_token_file.write(granule_url)
 
 
 def extract_bounding_box(
