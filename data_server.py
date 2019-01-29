@@ -24,5 +24,6 @@ def index():
     except Exception as e:
         return str(e)
 
+
 if __name__ == '__main__':
     APP.run(host='0.0.0.0', port=8080)
