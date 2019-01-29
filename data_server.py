@@ -16,7 +16,7 @@ logging.basicConfig(
         ' [%(funcName)s:%(lineno)d] %(message)s'),
     stream=sys.stdout)
 
-APP = Flask(__name__)
+APP = Flask(__name__, static_url_path='/workspace')
 
 @APP.route('/')
 def index():
@@ -32,7 +32,8 @@ def search_images(path):
     """Build dict of images."""
     directory_list = []
     for dirname in os.listdir(path):
-        if not os.path.isdir(dirname):
+        print(dirname)
+        if not os.path.isdir(os.path.join(path, dirname)):
             continue
         image_list = []
         for file_path in glob.glob(os.path.join(path, dirname, '*.png')):
@@ -40,25 +41,6 @@ def search_images(path):
         directory_list.append((dirname, image_list))
     return directory_list
 
-
-def make_tree(path):
-    """Make a directory tree struct."""
-    tree = {
-        'name': os.path.basename(path),
-        'children': []
-        }
-    try:
-        lst = os.listdir(path)
-    except OSError:
-        pass  #ignore errors
-    else:
-        for name in lst:
-            fn = os.path.join(path, name)
-            if os.path.isdir(fn):
-                tree['children'].append(make_tree(fn))
-            else:
-                tree['children'].append(dict(name=name))
-    return tree
 
 if __name__ == '__main__':
     APP.run(host='0.0.0.0', port=8080)

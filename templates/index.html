@@ -1,11 +1,14 @@
 <!doctype html>
 <title>NatGeo Sentinel Image Dump</title>
 <h1>NatGeo Sentinel Image Dump</h1>
+<p>{{ image_list }}</p>
 <table>
-    {%- for dirname, image_file_list in image_list %}
+    {%- for tuple in image_list %}
     <tr>
-        <td>dirname</td>
-        <td>{{ loop(image_file_list) }}</td>
+        <td>{{ tuple[0] }}</td>
+        {%- for img_path in tuple[1] %}
+            <td><img src='{{ img_path }}'/></td>
+        {%- endfor %}
     </tr>
     {%- endfor %}
 </table>
