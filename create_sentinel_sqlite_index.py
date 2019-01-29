@@ -219,7 +219,7 @@ def fetch_tile_and_bound_data(
         try:
             urllib.request.urlretrieve(granule_url, granule_path)
         except:
-            LOGGER.exception(f"couldn't get {granule_url")
+            LOGGER.exception(f"couldn't get {granule_url}")
 
         granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
         target_bounding_box = pygeoprocessing.transform_bounding_box(
