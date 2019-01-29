@@ -1,4 +1,5 @@
 """Create a sentinel sqlite database index."""
+import xml.etree.ElementTree
 import subprocess
 import time
 import csv
@@ -11,13 +12,17 @@ import logging
 import sqlite3
 import re
 
-import google.cloud.storage
+import urllib.request
 from osgeo import gdal
 from osgeo import osr
 import shapely.wkb
 import reproduce
 import taskgraph
 import pygeoprocessing
+
+OPENER = urllib.request.build_opener()
+OPENER.addheaders = [('User-agent', 'Mozilla/5.0')]
+urllib.request.install_opener(OPENER)
 
 WORKSPACE_DIR = 'workspace'
 SENTINEL_CSV_BUCKET_ID_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
@@ -109,8 +114,6 @@ def schedule_grand_sentinel_extraction(
         Task object that can be joined when all scheduled tasks are complete.
 
     """
-    client = google.cloud.storage.client.Client.from_service_account_json(
-        iam_token_path)
     grand_vector = gdal.OpenEx(grand_vector_path, gdal.OF_VECTOR)
     grand_layer = grand_vector.GetLayer()
 
@@ -141,21 +144,33 @@ def schedule_grand_sentinel_extraction(
                 (grand_bb[3], grand_bb[1], grand_bb[0], grand_bb[2]))
 
             for result in cursor:
-                gs_path = result[-1]
-                bucket_id, subpath = (
-                    re.search('gs://([^/]+)/(.*)', gs_path).groups())
-                LOGGER.debug('%s %s', bucket_id, subpath)
-                bucket = client.get_bucket(bucket_id)
-                blob_list = [
-                    blob for blob in bucket.list_blobs(prefix=subpath)
-                    if blob.name.endswith('TCI.jp2')]
-
                 granule_dir = os.path.join(workspace_dir, result[0])
                 try:
                     os.makedirs(granule_dir)
                 except OSError:
                     pass
 
+                gs_path = result[-1]
+                bucket_id, subpath = (
+                    re.search('gs://([^/]+)/(.*)', gs_path).groups())
+
+                url_prefix = f'''https://storage.googleapis.com/{
+                    bucket_id}/{subpath}'''
+
+                manifest_url = f'{url_prefix}/manifest.safe'
+                manifest_path = os.path.join(granule_dir, 'manifest.safe')
+                manifest_task_fetch = task_graph.add_task(
+                    func=urllib.request.urlretrieve,
+                    args=(manifest_url, manifest_path),
+                    target_path_list=[manifest_path],
+                    task_name=f'fetch {manifest_url}')
+                manifest_task_fetch.join()
+
+                LOGGER.debug(manifest_url)
+                manifest_xml = xml.etree.ElementTree.parse(manifest_path).getroot()
+                LOGGER.debug(manifest_xml)
+
+                """
                 for blob in blob_list:
                     local_blob_path = os.path.join(
                         granule_dir, os.path.basename(blob.name))
@@ -176,6 +191,8 @@ def schedule_grand_sentinel_extraction(
                         target_path_list=[local_bb_image_path],
                         dependent_task_list=[download_blob_task],
                         task_name=f'extract bb from {local_bb_image_path}')
+                """
+            break
 
 
 def extract_bounding_box(
