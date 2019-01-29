@@ -1,4 +1,5 @@
 """NatGeo flask data server."""
+import collections
 import re
 import glob
 import os
@@ -47,16 +48,17 @@ def search_images(path):
         if not os.path.isdir(os.path.join(path, dirname)):
             continue
         image_list = []
-        grand_id = None
+        grand_id_to_band_list = collections.defaultdict(list)
         for file_path in glob.glob(os.path.join(path, dirname, '*.png')):
             try:
                 raster_band_id, grand_id = re.match(
                     r'.*_(.*)_grand_(.*)\.png', file_path).groups()
+                grand_id_to_band_list[grand_id].append(
+                    (raster_band_id, file_path))
             except:
                 LOGGER.exception('can\'t find a match on %s', file_path)
                 continue
-            image_list.append((raster_band_id, file_path))
-        if grand_id is not None:
+        for grand_id, image_list in grand_id_to_band_list.items():
             directory_list.append(
                 (GRAND_ID_TO_NAME_MAP[int(grand_id)], image_list))
     return directory_list
