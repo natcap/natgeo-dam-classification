@@ -52,8 +52,9 @@ def search_images(path):
             raster_band_id, grand_id = re.match(
                 r'.*_(.*)_grand_(.*)\.png', file_path).groups()
             image_list.append((raster_band_id, file_path))
-
-        directory_list.append((GRAND_ID_TO_NAME_MAP[int(grand_id)], image_list))
+        if grand_id is not None:
+            directory_list.append(
+                (GRAND_ID_TO_NAME_MAP[int(grand_id)], image_list))
     return directory_list
 
 
