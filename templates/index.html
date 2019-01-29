@@ -1,7 +1,8 @@
 <!doctype html>
 <link rel="stylesheet" href="css/w3.css">
-<title>NatGeo Sentinel Image Dump</title>
-<h1>NatGeo Sentinel Image Dump</h1>
+<title>NatGeo Sentinel Image Trainer</title>
+<h1>NatGeo Sentinel Image Trainer</h1>
+<p>Help us train.</p>
 <table class='grid-table'>
     {%- for tuple in image_list %}
     <tr>
@@ -9,9 +10,9 @@
         {%- for img_tuple in tuple[1] %}
             <td><p>
                 Band ID: <strong>{{ img_tuple[0] }}</strong><br>
-                <input type="checkbox"  value="isadam">This is a dam<br></p>
-                <input type="checkbox"  value="isadam">This NOT is a dam<br></p>
-                <input type="checkbox"  value="isadam">Unsure<br></p>
+                <input type="radio" name="damradio" value="isadam">This is a dam<br></p>
+                <input type="radio" name="damradio" value="notadam">This NOT is a dam<br></p>
+                <input type="radio" name="damradio" value="unsure">Unsure<br></p>
                 <img src='{{ img_tuple[1] }}'/>
         </td>
         {%- endfor %}
