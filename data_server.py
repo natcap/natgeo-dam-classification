@@ -16,7 +16,7 @@ logging.basicConfig(
         ' [%(funcName)s:%(lineno)d] %(message)s'),
     stream=sys.stdout)
 
-APP = Flask(__name__, static_url_path='/workspace')
+APP = Flask(__name__, static_url_path='', static_folder='')
 
 @APP.route('/')
 def index():
