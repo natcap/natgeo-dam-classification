@@ -53,6 +53,8 @@ def search_images(path):
             try:
                 raster_band_id, grand_id = re.match(
                     r'.*_(.*)_grand_(.*)\.png', file_path).groups()
+                if raster_band_id != 'TCI':
+                    continue
                 grand_id_to_band_list[grand_id].append(
                     (raster_band_id, file_path))
             except:
