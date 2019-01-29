@@ -1,4 +1,5 @@
 """NatGeo flask data server."""
+import glob
 import os
 import sys
 import logging
@@ -22,14 +23,30 @@ def index():
     """Entry page."""
     try:
         path = './workspace/sentinel_granules'
-        return render_template('index.html', tree=make_tree(path))
+        return render_template('index.html', image_list=search_images(path))
     except Exception as e:
         return str(e)
 
 
+def search_images(path):
+    """Build dict of images."""
+    directory_list = []
+    for dirname in os.listdir(path):
+        if not os.path.isdir(dirname):
+            continue
+        image_list = []
+        for file_path in glob.glob(os.path.join(path, dirname, '*.png')):
+            image_list.append(file_path)
+        directory_list.append((dirname, image_list))
+    return directory_list
+
+
 def make_tree(path):
     """Make a directory tree struct."""
-    tree = dict(name=os.path.basename(path), children=[])
+    tree = {
+        'name': os.path.basename(path),
+        'children': []
+        }
     try:
         lst = os.listdir(path)
     except OSError:

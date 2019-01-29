@@ -1,11 +1,12 @@
 <!doctype html>
-<title>Path: {{ tree.name }}</title>
-<h1>{{ tree.name }}</h1>
-<ul>
-{%- for item in tree.children recursive %}
-    <li>{{ item.name }}
-    {%- if item.children -%}
-        <ul>{{ loop(item.children) }}</ul>
-    {%- endif %}</li>
-{%- endfor %}
-</ul>
+<title>NatGeo Sentinel Image Dump</title>
+<h1>NatGeo Sentinel Image Dump</h1>
+<table>
+    {%- for dirname, image_file_list in image_list %}
+    <tr>
+        <td>dirname</td>
+        <td>{{ loop(image_file_list) }}</td>
+    </tr>
+    {%- endfor %}
+</table>
+
