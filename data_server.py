@@ -20,7 +20,7 @@ APP = Flask(__name__, static_url_path='/workspace/sentinel_granules/')
 def index():
     """Entry page."""
     try:
-        return '<img src="/static/L1C_T10UEB_A012108_20171016T193021/T10UEB_20171016T192401_B02_grand_19.png">'
+        return '<img src="workspace/sentinel_granules/L1C_T10UEB_A012108_20171016T193021/T10UEB_20171016T192401_B02_grand_19.png">'
     except Exception as e:
         return str(e)
 
