@@ -169,31 +169,27 @@ def schedule_grand_sentinel_extraction(
                 LOGGER.debug(manifest_url)
                 manifest_xml = etree.parse(manifest_path).getroot().xpath(
                     "//dataObject[@ID = 'IMG_DATA_Band_TCI_Tile1_Data']/*/fileLocation")
-                LOGGER.debug(manifest_xml[0].get('href'))
-
-                """
-                for blob in blob_list:
-                    local_blob_path = os.path.join(
-                        granule_dir, os.path.basename(blob.name))
-                    download_blob_task = task_graph.add_task(
-                        func=blob.download_to_filename,
-                        args=(local_blob_path,),
-                        target_path_list=[local_blob_path],
-                        task_name=f'download {local_blob_path}')
-
-                    local_bb_image_path = (
-                        f'''{os.path.splitext(local_blob_path)[0]}_{
-                            grand_id}.tif''')
-                    extract_box_task = task_graph.add_task(
-                        func=extract_bounding_box,
-                        args=(
-                            local_blob_path, grand_bb,
-                            wgs84_srs.ExportToWkt(), local_bb_image_path),
-                        target_path_list=[local_bb_image_path],
-                        dependent_task_list=[download_blob_task],
-                        task_name=f'extract bb from {local_bb_image_path}')
-                """
-            break
+                granule_url = f"{url_prefix}/{manifest_xml[0].get('href')}"
+                LOGGER.debug(granule_url)
+                granule_path = os.path.join(
+                    granule_dir, os.path.basename(granule_url))
+                granule_task_fetch = task_graph.add_task(
+                    func=urllib.request.urlretrieve,
+                    args=(granule_url, granule_path),
+                    target_path_list=[granule_path],
+                    task_name=f'fetch {granule_url}')
+                granule_task_fetch.join()
+                local_bb_image_path = (
+                    f'''{os.path.splitext(granule_path)[0]}_{
+                        grand_id}.tif''')
+                extract_box_task = task_graph.add_task(
+                    func=extract_bounding_box,
+                    args=(
+                        granule_path, grand_bb,
+                        wgs84_srs.ExportToWkt(), local_bb_image_path),
+                    target_path_list=[local_bb_image_path],
+                    dependent_task_list=[granule_task_fetch],
+                    task_name=f'extract bb from {local_bb_image_path}')
 
 
 def extract_bounding_box(
