@@ -254,7 +254,7 @@ def fetch_tile_and_bound_data(
             func=subprocess.run,
             args=([
                 'gdal_translate', '-of', 'PNG', clipped_raster_path,
-                png_path]),
+                png_path],),
             target_path_list=[png_path],
             dependent_task_list=[warp_task],
             task_name=f'warp {png_path}')
