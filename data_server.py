@@ -49,8 +49,12 @@ def search_images(path):
         image_list = []
         grand_id = None
         for file_path in glob.glob(os.path.join(path, dirname, '*.png')):
-            raster_band_id, grand_id = re.match(
-                r'.*_(.*)_grand_(.*)\.png', file_path).groups()
+            try:
+                raster_band_id, grand_id = re.match(
+                    r'.*_(.*)_grand_(.*)\.png', file_path).groups()
+            except:
+                LOGGER.exception('can\'t find a match on %s', file_path)
+                continue
             image_list.append((raster_band_id, file_path))
         if grand_id is not None:
             directory_list.append(
