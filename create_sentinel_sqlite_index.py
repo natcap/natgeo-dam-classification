@@ -171,8 +171,6 @@ def schedule_grand_sentinel_extraction(
                     task_graph, [manifest_task_fetch], manifest_path,
                     url_prefix, 'grand_%d' % grand_id, grand_bb,
                     wgs84_srs_wkt, granule_dir)
-                break
-        break
 
 
 def fetch_tile_and_bound_data(
