@@ -13,6 +13,7 @@ import sqlite3
 import re
 
 import urllib.request
+import urllib.error
 from osgeo import gdal
 from osgeo import osr
 import shapely.wkb
@@ -213,13 +214,25 @@ def fetch_tile_and_bound_data(
         if not manifest_xml:
             LOGGER.warn(f'{band_id} not found in {url_prefix}')
             continue
-        granule_url = f"{url_prefix}/{manifest_xml[0].get('href')}"
+        raw_href = manifest_xml[0].get('href')
+        # I think the API might think we're hacking a url ./
+        clean_href = raw_href[2::] if raw_href.startswith('./') else raw_href
+        granule_url = f"{url_prefix}/{clean_href}"
         granule_path = os.path.join(
             target_dir, os.path.basename(granule_url))
-        try:
-            urllib.request.urlretrieve(granule_url, granule_path)
-        except:
-            LOGGER.exception(f"couldn't get {granule_url}")
+        fetch_attempt = 0
+        while True:
+            try:
+                fetch_attempt += 1
+                urllib.request.urlretrieve(granule_url, granule_path)
+                break
+            except urllib.error.HTTPError:
+                if fetch_attempt == 5:
+                    raise
+                sleep_time = fetch_attempt * 5.0
+                LOGGER.exception(
+                    f"couldn't get {granule_url}, waiting {sleep_time}s")
+                time.sleep(sleep_time)
 
         granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
         target_bounding_box = pygeoprocessing.transform_bounding_box(
