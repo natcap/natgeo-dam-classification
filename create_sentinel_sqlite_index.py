@@ -203,29 +203,37 @@ def fetch_tile_and_bound_data(
         None
 
     """
-    manifest_xml = etree.parse(manifest_path).getroot().xpath(
-        "//dataObject[@ID = 'IMG_DATA_Band_TCI_Tile1_Data']/*/fileLocation")
-    granule_url = f"{url_prefix}/{manifest_xml[0].get('href')}"
-    granule_path = os.path.join(
-        target_dir, os.path.basename(granule_url))
-    urllib.request.urlretrieve(granule_url, granule_path)
+    for band_id in (
+            'IMG_DATA_Band_TCI_Tile1_Data',
+            'IMG_DATA_Band_10m_1_Tile1_Data',
+            'IMG_DATA_Band_10m_2_Tile1_Data',
+            'IMG_DATA_Band_10m_3_Tile1_Data'):
+        manifest_xml = etree.parse(manifest_path).getroot().xpath(
+            f"//dataObject[@ID = '{band_id}']/*/fileLocation")
+        if not manifest_xml:
+            LOGGER.warn(f'{band_id} not found in {url_prefix}')
+            continue
+        granule_url = f"{url_prefix}/{manifest_xml[0].get('href')}"
+        granule_path = os.path.join(
+            target_dir, os.path.basename(granule_url))
+        urllib.request.urlretrieve(granule_url, granule_path)
 
-    granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
-    target_bounding_box = pygeoprocessing.transform_bounding_box(
-        bounding_box, bounding_box_ref_wkt,
-        granule_raster_info['projection'])
-    # this will be a GeoTIFF, hence the .tif suffix
-    clipped_raster_path = (
-        f'{os.path.splitext(granule_path)[0]}_{bound_id_suffix}.tif')
-    pygeoprocessing.warp_raster(
-        granule_path, granule_raster_info['pixel_size'], clipped_raster_path,
-        'near', target_bb=target_bounding_box)
-    subprocess.run(
-        ['gdal_translate', '-of', 'PNG', clipped_raster_path,
-         f'{os.path.splitext(clipped_raster_path)[0]}.png'])
+        granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
+        target_bounding_box = pygeoprocessing.transform_bounding_box(
+            bounding_box, bounding_box_ref_wkt,
+            granule_raster_info['projection'])
+        # this will be a GeoTIFF, hence the .tif suffix
+        clipped_raster_path = (
+            f'{os.path.splitext(granule_path)[0]}_{bound_id_suffix}.tif')
+        pygeoprocessing.warp_raster(
+            granule_path, granule_raster_info['pixel_size'],
+            clipped_raster_path, 'near', target_bb=target_bounding_box)
+        subprocess.run(
+            ['gdal_translate', '-of', 'PNG', clipped_raster_path,
+             f'{os.path.splitext(clipped_raster_path)[0]}.png'])
 
-    with open(complete_token_path, 'w') as complete_token_file:
-        complete_token_file.write(granule_url)
+        with open(complete_token_path, 'w') as complete_token_file:
+            complete_token_file.write(granule_url)
 
 
 def extract_bounding_box(
