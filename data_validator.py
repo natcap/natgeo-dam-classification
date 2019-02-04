@@ -1,4 +1,4 @@
-"""NatGeo flask data server."""
+"""Flask app to validata imagery and point locations."""
 import collections
 import re
 import glob
@@ -30,19 +30,32 @@ for grand_feature in grand_layer:
         grand_feature.GetField('DAM_NAME'))
 grand_layer = None
 grand_vector = None
+WORKSPACE_DIR = 'workspace'
+
+VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
+
 
 @APP.route('/')
 def index():
     """Entry page."""
     try:
-        path = './workspace/sentinel_granules'
-        return render_template('index.html', image_list=search_images(path))
+        imagery_path = f'./{WORKSPACE_DIR}/sentinel_granules'
+        return render_template(
+            'index.html', image_list=search_images(imagery_path))
     except Exception as e:
         return str(e)
 
 
-def build_index(root_path, target_database_path):
-    """Build a database of images that can be used in the webservice."""
+def build_base_validation_db(point_shape_tuple_list, target_database_path):
+    """Build the base database for validation.
+
+    Parameters:
+        point_shape_tuple_list (list): list of (vector_path, key) pairs
+            that should be ingested into the target database. the
+            `vector_path` component refers to a vector geometry on disk who
+            has features that can be uniquely identified with the field
+
+    """
     database_path = os.path.join(workspace_dir, 'ipbes_ndr_results.db')
     sql_create_projects_table = (
         """
