@@ -29,16 +29,19 @@ POINT_DAM_DATA_LIST = [
 WORKSPACE_DIR = 'workspace'
 
 VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
+DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
 
 
 @APP.route('/')
 def index():
     """Entry page."""
-    return "under construction"
     try:
-        imagery_path = f'./{WORKSPACE_DIR}/sentinel_granules'
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * from base_table LIMIT 1')
+            database_result = cursor.fetchone()
         return render_template(
-            'index.html', image_list=search_images(imagery_path))
+            'validation.html', point_data=database_result)
     except Exception as e:
         return str(e)
 
@@ -112,9 +115,8 @@ def build_base_validation_db(
 
 
 if __name__ == '__main__':
-    database_path = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
     complete_token_path = os.path.join(os.path.dirname(
-        database_path), f'{os.path.basename(database_path)}_COMPLETE')
+        DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
     build_base_validation_db(
-        POINT_DAM_DATA_LIST, database_path, complete_token_path)
+        POINT_DAM_DATA_LIST, DATABASE_PATH, complete_token_path)
     APP.run(host='0.0.0.0', port=8080)
