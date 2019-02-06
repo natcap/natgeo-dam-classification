@@ -28,13 +28,48 @@
 
 <script type="text/javascript">
     var mymap = L.map('mapid').setView(
-        [ {{ point_data.y }}, {{ point_data.x }} ], 13);
+        [{{ point_data.y }}, {{ point_data.x }}], 13);
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
-    attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
-    maxZoom: 18,
-    id: 'mapbox.streets',
-    accessToken: 'pk.eyJ1IjoicmljaHBzaGFycCIsImEiOiJjanJzdHlib2oyZWRsNDNuM3Rndmh4YnRyIn0.Rs9F-GWbQzllbJAYSJVY1g'
-    }).addTo(mymap);
+            attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+            maxZoom: 18,
+            id: 'mapbox.satellite',
+            accessToken: 'pk.eyJ1IjoicmljaHBzaGFycCIsImEiOiJjanJzdHlib2oyZWRsNDNuM3Rndmh4YnRyIn0.Rs9F-GWbQzllbJAYSJVY1g'
+        }).addTo(mymap);
+    var marker = L.marker([{{ point_data.y }}, {{ point_data.x }}]).addTo(mymap);
+
+    mymap.on('click', onMapClick);
+    function onMapClick(e) {
+        var geojsonFeature = {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+                    "type": "Point",
+                    "coordinates": [e.latlng.lat, e.latlng.lng]
+            }
+        }
+        var marker;
+        L.geoJson(geojsonFeature, {
+            pointToLayer: function(feature, latlng){
+                marker = L.marker(e.latlng, {
+                    title: "Resource Location",
+                    alt: "Resource Location",
+                    riseOnHover: true,
+                    draggable: true,
+                }).bindPopup("<input type='button' value='Delete this marker' class='marker-delete-button'/>");
+                marker.on("popupopen", onPopupOpen);
+                return marker;
+            }
+        }).addTo(mymap);
+    }
+
+
+    function onPopupOpen() {
+        var tempMarker = this;
+        // To remove marker on click of delete button in the popup of marker
+        $(".marker-delete-button:visible").click(function () {
+            map.removeLayer(tempMarker);
+        });
+    }
 </script>
 
 </body>
