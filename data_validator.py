@@ -1,13 +1,11 @@
 """Flask app to validata imagery and point locations."""
 import datetime
 import sqlite3
-import collections
-import re
-import glob
 import os
 import sys
 import logging
 
+import shapely.wkt
 from osgeo import gdal
 from flask import Flask
 from flask import render_template
@@ -40,8 +38,10 @@ def index():
             cursor = conn.cursor()
             cursor.execute('SELECT * from base_table LIMIT 1')
             database_result = cursor.fetchone()
+            geometry_wkt = database_result[2]
+            geometry = shapely.wkt.loads(geometry_wkt)
         return render_template(
-            'validation.html', point_data=database_result)
+            'validation.html', point_data=geometry)
     except Exception as e:
         return str(e)
 
@@ -72,7 +72,7 @@ def build_base_validation_db(
     """
     sql_create_projects_table = (
         """
-        CREATE TABLE base_table (
+        CREATE TABLE IF NOT EXISTS base_table (
             source_id TEXT NOT NULL,
             source_key TEXT NOT NULL,
             data_geom TEXT NOT NULL,
@@ -81,7 +81,7 @@ def build_base_validation_db(
         CREATE UNIQUE INDEX IF NOT EXISTS base_table_index
         ON base_table (key);
 
-        CREATE TABLE validation_table (
+        CREATE TABLE IF NOT EXISTS validation_table (
             modified_geom TEXT NOT NULL,
             key INTEGER NOT NULL,
             FOREIGN KEY (key) REFERENCES base_table(key)
@@ -90,9 +90,6 @@ def build_base_validation_db(
         CREATE UNIQUE INDEX IF NOT EXISTS validation_table_index
         ON validation_table (key);
         """)
-
-    if os.path.exists(target_database_path):
-        os.remove(target_database_path)
 
     with sqlite3.connect(target_database_path) as conn:
         cursor = conn.cursor()
@@ -106,7 +103,7 @@ def build_base_validation_db(
                 geom = feature.GetGeometryRef()
                 key_val = feature.GetField(primary_key_id)
                 cursor.execute(
-                    'INSERT INTO base_table VALUES (?, ?, ?, ?)',
+                    'INSERT OR IGNORE INTO base_table VALUES (?, ?, ?, ?)',
                     (source_id, key_val, geom.ExportToWkt(), next_feature_id))
                 next_feature_id += 1
 
