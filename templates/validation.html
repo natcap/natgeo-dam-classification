@@ -14,6 +14,7 @@
         width: 500px;
         height: 500px; }
 </style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
 <title>NatGeo Dam Validator</title>
 </head>
@@ -48,6 +49,13 @@
         var position = marker.getLatLng();
         marker.setLatLng(new L.LatLng(position.lat, position.lng),{draggable:'true'});
         map.panTo(new L.LatLng(position.lat, position.lng))
+        $.ajax({
+            url: '/markermove',
+            type: 'POST',
+            contentType: 'application/json;charset=UTF-8',
+            dataType: 'json',
+            data: JSON.stringify(position)
+        });
       });
 
     map.on('click', onMapClick);
@@ -74,7 +82,6 @@
             }
         }).addTo(map);
     }
-
 
     function onPopupOpen() {
         var tempMarker = this;

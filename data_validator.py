@@ -1,4 +1,5 @@
 """Flask app to validata imagery and point locations."""
+import json
 import datetime
 import sqlite3
 import os
@@ -8,12 +9,12 @@ import logging
 import shapely.wkt
 from osgeo import gdal
 from flask import Flask
-from flask import render_template
+import flask
 
 LOGGER = logging.getLogger(__name__)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format=(
         '%(asctime)s (%(relativeCreated)d) %(levelname)s %(name)s'
         ' [%(funcName)s:%(lineno)d] %(message)s'),
@@ -40,10 +41,24 @@ def index():
             database_result = cursor.fetchone()
             geometry_wkt = database_result[2]
             geometry = shapely.wkt.loads(geometry_wkt)
-        return render_template(
+        return flask.render_template(
             'validation.html', point_data=geometry)
     except Exception as e:
         return str(e)
+
+
+@APP.route('/markermove', methods=['POST'])
+def move_marker():
+    """Push event on a marker."""
+    try:
+        LOGGER.debug('got a post')
+        LOGGER.debug(
+            (flask.request.data.decode('utf-8')))
+        LOGGER.debug('move marker')
+        return 'good'
+    except:
+        LOGGER.exception("big error")
+        return 'error'
 
 
 def build_base_validation_db(
