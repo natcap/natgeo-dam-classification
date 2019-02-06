@@ -1,4 +1,6 @@
 """Flask app to validata imagery and point locations."""
+import datetime
+import sqlite3
 import collections
 import re
 import glob
@@ -21,15 +23,9 @@ logging.basicConfig(
 
 APP = Flask(__name__, static_url_path='', static_folder='')
 
-grand_vector = gdal.OpenEx(
-    r"workspace/GRanD_Version_1_1/GRanD_dams_v1_1.shp", gdal.OF_VECTOR)
-grand_layer = grand_vector.GetLayer()
-GRAND_ID_TO_NAME_MAP = {}
-for grand_feature in grand_layer:
-    GRAND_ID_TO_NAME_MAP[grand_feature.GetField('GRAND_ID')] = (
-        grand_feature.GetField('DAM_NAME'))
-grand_layer = None
-grand_vector = None
+POINT_DAM_DATA_LIST = [
+    ('GRAND', "workspace/GRanD_Version_1_1/GRanD_dams_v1_1.shp", 'GRAND_ID'),
+]
 WORKSPACE_DIR = 'workspace'
 
 VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
@@ -38,6 +34,7 @@ VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
 @APP.route('/')
 def index():
     """Entry page."""
+    return "under construction"
     try:
         imagery_path = f'./{WORKSPACE_DIR}/sentinel_granules'
         return render_template(
@@ -46,78 +43,78 @@ def index():
         return str(e)
 
 
-def build_base_validation_db(point_shape_tuple_list, target_database_path):
+def build_base_validation_db(
+        point_shape_tuple_list, target_database_path, complete_token_path):
     """Build the base database for validation.
 
     Parameters:
         point_shape_tuple_list (list): list of (vector_path, key) pairs
             that should be ingested into the target database. the
-            `vector_path` component refers to a vector geometry on disk who
-            has features that can be uniquely identified with the field
+            `vector_path` component refers to a vector geometry path that
+            has a keyfield `key` to uniquely identify the geometry.
+        target_database_path (str): path to a target database that contains
+            a table called 'base_table' with columns:
+                * data_source (original path)
+                * data_key (original key to feature)
+                * key (unique key)
+            and a table called 'validation_table' with columns:
+                * key (remote to 'base_table')
+                * modified geometry (blob?) - to mark moved geometry?
+        complete_token_path (str): path to file that will be created if
 
+
+
+    Returns:
+        None.
     """
-    database_path = os.path.join(workspace_dir, 'ipbes_ndr_results.db')
     sql_create_projects_table = (
         """
-        CREATE TABLE IF NOT EXISTS nutrient_export (
-            ws_prefix_key TEXT NOT NULL,
-            scenario_key TEXT NOT NULL,
-            nutrient_export REAL NOT NULL,
-            modified_load REAL NOT NULL,
-            rural_pop_count REAL NOT NULL,
-            average_runoff_coefficient REAL NOT NULL,
-            ag_area REAL NOT NULL,
-            total_ag_load REAL NOT NULL,
-            grid_aggregation_pickle BLOB NOT NULL,
-            PRIMARY KEY (ws_prefix_key, scenario_key)
+        CREATE TABLE base_table (
+            source_id TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            data_geom TEXT NOT NULL,
+            key INTEGER NOT NULL PRIMARY KEY
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS ws_scenario_index
-        ON nutrient_export (ws_prefix_key, scenario_key);
-        CREATE INDEX IF NOT EXISTS ws_index
-        ON nutrient_export (ws_prefix_key);
+        CREATE UNIQUE INDEX IF NOT EXISTS base_table_index
+        ON base_table (key);
 
-        CREATE TABLE IF NOT EXISTS geometry_table (
-            ws_prefix_key TEXT NOT NULL,
-            geometry_wgs84_wkb BLOB NOT NULL,
-            region TEXT NOT NULL,
-            country TEXT NOT NULL,
-            watershed_area REAL NOT NULL,
-            PRIMARY KEY (ws_prefix_key)
+        CREATE TABLE validation_table (
+            modified_geom TEXT NOT NULL,
+            key INTEGER NOT NULL,
+            FOREIGN KEY (key) REFERENCES base_table(key)
         );
 
-        CREATE UNIQUE INDEX IF NOT EXISTS geometry_key_index
-        ON geometry_table (ws_prefix_key);
+        CREATE UNIQUE INDEX IF NOT EXISTS validation_table_index
+        ON validation_table (key);
         """)
 
-    conn = sqlite3.connect(database_path)
-    cursor = conn.cursor()
-    cursor.executescript(sql_create_projects_table)
+    if os.path.exists(target_database_path):
+        os.remove(target_database_path)
 
+    with sqlite3.connect(target_database_path) as conn:
+        cursor = conn.cursor()
+        cursor.executescript(sql_create_projects_table)
 
-def search_images(path):
-    """Build dict of images."""
-    directory_list = []
-    for dirname in os.listdir(path):
-        if not os.path.isdir(os.path.join(path, dirname)):
-            continue
-        image_list = []
-        grand_id_to_band_list = collections.defaultdict(list)
-        for file_path in glob.glob(os.path.join(path, dirname, '*.png')):
-            try:
-                raster_band_id, grand_id = re.match(
-                    r'.*_(.*)_grand_(.*)\.png', file_path).groups()
-                if raster_band_id != 'TCI':
-                    continue
-                grand_id_to_band_list[grand_id].append(
-                    (raster_band_id, file_path))
-            except:
-                LOGGER.exception('can\'t find a match on %s', file_path)
-                continue
-        for grand_id, image_list in grand_id_to_band_list.items():
-            directory_list.append(
-                (GRAND_ID_TO_NAME_MAP[int(grand_id)], image_list))
-    return directory_list
+        next_feature_id = 0
+        for source_id, vector_path, primary_key_id in point_shape_tuple_list:
+            vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
+            layer = vector.GetLayer()
+            for feature in layer:
+                geom = feature.GetGeometryRef()
+                key_val = feature.GetField(primary_key_id)
+                cursor.execute(
+                    'INSERT INTO base_table VALUES (?, ?, ?, ?)',
+                    (source_id, key_val, geom.ExportToWkt(), next_feature_id))
+                next_feature_id += 1
+
+    with open(complete_token_path, 'w') as token_file:
+        token_file.write(str(datetime.datetime.now()))
 
 
 if __name__ == '__main__':
+    database_path = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
+    complete_token_path = os.path.join(os.path.dirname(
+        database_path), f'{os.path.basename(database_path)}_COMPLETE')
+    build_base_validation_db(
+        POINT_DAM_DATA_LIST, database_path, complete_token_path)
     APP.run(host='0.0.0.0', port=8080)
