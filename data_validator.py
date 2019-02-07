@@ -60,7 +60,7 @@ def process_point(point_id):
                 validated_geometry = shapely.wkt.loads(
                     validated_geometry_wkt[0])
             else:
-                validated_geometry = None
+                validated_geometry = base_point_geom
 
         return flask.render_template(
             'validation.html', **{

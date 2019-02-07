@@ -29,8 +29,13 @@
 <hr>
 <table class='grid-table'>
     <div id="infoBox">
-        <p><strong>Original Point</strong> {{ base_point_id }} </p>
-        <p><strong>Modified Point</strong> {{ validated_point_geom }} </p>
+        <p><strong>Original Point</strong>
+            {{ base_point_id }}
+            LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
+        <p><strong>Modified Point</strong>
+           <span id='validated_point_geom'>
+           LatLng({{ '%.6f' % validated_point_geom.y }} {{ '%.6f' % validated_point_geom.x }})</span>
+        </p>
     </div>
     <div id="mapid"></div>
 </table>
@@ -51,7 +56,7 @@
             fillColor: "#F00",
             color: "#D00",
             shape: "triangle",
-            radius: 3,
+            radius: 5,
             title: 'original dam location',
             alt: 'original dam location',
         }).addTo(map);
@@ -70,7 +75,7 @@
         var marker = event.target;
         var position = marker.getLatLng();
         marker.setLatLng(new L.LatLng(position.lat, position.lng),{draggable:'true'});
-        map.panTo(new L.LatLng(position.lat, position.lng))
+        map.panTo(new L.LatLng(position.lat, position.lng));
         $.ajax({
             url: '/markermove',
             type: 'POST',
@@ -82,6 +87,7 @@
                 'point_id': {{ point_id }},
             })
         });
+        $('span#validated_point_geom').text(position);
       });
 
 </script>
