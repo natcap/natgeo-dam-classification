@@ -41,8 +41,8 @@
            <span id='validated_point_geom'>
            LatLng({{ '%.6f' % validated_point_geom.y }} {{ '%.6f' % validated_point_geom.x }})</span>
         </p>
-        <a class="ui-button ui-widget ui-corner-all" href="/{{ int(point_id)-1 }}">Previous Point</a>
-        <a class="ui-button ui-widget ui-corner-all" href="/{{ int(point_id)+1 }}">Next Point</a>
+        <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int - 1}}">Prev Point</a>
+        <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
         <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
     </div>
     <div id="mapid"></div>
@@ -77,9 +77,9 @@
             alt: 'modified dam location',
             draggable: true,
             color: '#F00'
-        }).addTo(map);
+    }).addTo(map);
 
-     marker.on('dragend', function(event){
+    marker.on('dragend', function(event){
         var marker = event.target;
         var position = marker.getLatLng();
         marker.setLatLng(new L.LatLng(position.lat, position.lng),{draggable:'true'});
@@ -96,7 +96,22 @@
             })
         });
         $('span#validated_point_geom').text(position);
-      });
+    });
+
+    $("#next_point").click(function(e) {
+        e.preventDefault();
+        $.post({
+            url: "/next_point",
+            contentType: 'application/json;charset=UTF-8',
+            data: JSON.stringify({
+                next_prev_mode: 'next',
+                next_point_id: parseInt({{ point_id }}) + 1
+            }),
+            success: function (data) {
+                $("html").html(data);
+            }
+        });
+    });
 
 </script>
 

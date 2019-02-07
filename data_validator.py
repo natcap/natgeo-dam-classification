@@ -52,6 +52,16 @@ def get_unvalidated_point():
         return process_point(unvalidated_point_id)
 
 
+@APP.route('/next_point', methods=['POST'])
+def next_point():
+    """Go forward to backward in point id."""
+    try:
+        payload = json.loads(flask.request.data.decode('utf-8'))
+        return process_point(int(payload['next_point_id']))
+    except:
+        LOGGER.exception("bad stuff")
+
+
 @APP.route('/<point_id>')
 def process_point(point_id):
     """Entry page."""
