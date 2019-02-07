@@ -38,6 +38,20 @@ def entry_point():
     return process_point('0')
 
 
+@APP.route('/unvalidated')
+def get_unvalidated_point():
+    """Get a point that has not been validated."""
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT key '
+            'FROM base_table '
+            'WHERE key not in (SELECT key from validation_table)'
+            'LIMIT 1')
+        unvalidated_point_id = cursor.fetchone()[0]
+        return process_point(unvalidated_point_id)
+
+
 @APP.route('/<point_id>')
 def process_point(point_id):
     """Entry page."""
