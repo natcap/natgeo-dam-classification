@@ -32,12 +32,20 @@ DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
 
 
 @APP.route('/')
-def index():
+def entry_point():
+    """This handles the root GET."""
+    return process_point('0')
+
+
+@APP.route('/<point_id>')
+def process_point(point_id):
     """Entry page."""
+    LOGGER.debug(point_id)
     try:
         with sqlite3.connect(DATABASE_PATH) as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT * from base_table LIMIT 1')
+            cursor.execute(
+                'SELECT * from base_table WHERE key = ?', (point_id,))
             database_result = cursor.fetchone()
             geometry_wkt = database_result[2]
             geometry = shapely.wkt.loads(geometry_wkt)

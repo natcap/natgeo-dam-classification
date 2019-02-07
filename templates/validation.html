@@ -5,16 +5,18 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css"
    integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
    crossorigin=""/>
- <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"
    integrity="sha512-QVftwZFqvtRNi0ZyCtsznlKSWOStnDORoefr1enyq5mVL4tmKB3S/EnC3rRJcxCPavG10IcrVGSmPh6Qw5lwrg=="
    crossorigin=""></script>
+<script src="js/leaflet-svg-shape-markers.min.js"></script>
+
 <style type="text/css">
     #mapid {
         margin: auto;
         width: 500px;
         height: 500px; }
 </style>
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 
 <title>NatGeo Dam Validator</title>
 </head>
@@ -36,12 +38,23 @@
             id: 'mapbox.satellite',
             accessToken: 'pk.eyJ1IjoicmljaHBzaGFycCIsImEiOiJjanJzdHlib2oyZWRsNDNuM3Rndmh4YnRyIn0.Rs9F-GWbQzllbJAYSJVY1g'
         }).addTo(map);
+    var original_point = L.shapeMarker(
+        [{{ point_data.y }}, {{ point_data.x }}], {
+            fillColor: "#F00",
+            color: "#D00",
+            shape: "triangle",
+            radius: 3,
+            title: 'original dam location',
+            alt: 'original dam location',
+        }).addTo(map);
+
     var marker = L.marker(
         [{{ point_data.y }}, {{ point_data.x }}],
         {
-            title: 'dam name goes here',
-            alt: 'dam name goes here',
+            title: 'modified dam location',
+            alt: 'modified dam location',
             draggable: true,
+            color: '#F00'
         }).addTo(map);
 
      marker.on('dragend', function(event){
@@ -58,38 +71,6 @@
         });
       });
 
-    map.on('click', onMapClick);
-    function onMapClick(e) {
-        var geojsonFeature = {
-            "type": "Feature",
-            "properties": {},
-            "geometry": {
-                    "type": "Point",
-                    "coordinates": [e.latlng.lat, e.latlng.lng]
-            }
-        }
-        var marker;
-        L.geoJson(geojsonFeature, {
-            pointToLayer: function(feature, latlng){
-                marker = L.marker(e.latlng, {
-                    title: "Resource Location",
-                    alt: "Resource Location",
-                    riseOnHover: true,
-                    draggable: true,
-                }).bindPopup("<input type='button' value='Delete this marker' class='marker-delete-button'/>");
-                marker.on("popupopen", onPopupOpen);
-                return marker;
-            }
-        }).addTo(map);
-    }
-
-    function onPopupOpen() {
-        var tempMarker = this;
-        // To remove marker on click of delete button in the popup of marker
-        $(".marker-delete-button:visible").click(function () {
-            map.removeLayer(tempMarker);
-        });
-    }
 </script>
 
 </body>
