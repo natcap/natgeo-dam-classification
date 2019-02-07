@@ -5,7 +5,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css"
    integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
    crossorigin=""/>
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"
    integrity="sha512-QVftwZFqvtRNi0ZyCtsznlKSWOStnDORoefr1enyq5mVL4tmKB3S/EnC3rRJcxCPavG10IcrVGSmPh6Qw5lwrg=="
    crossorigin=""></script>
@@ -14,6 +16,9 @@
 <style type="text/css">
     #infoBox {
         margin: auto;
+        margin-bottom: 10px;
+        width: 500px;
+        font-size: small;
     }
     #mapid {
         margin: auto;
@@ -29,13 +34,15 @@
 <hr>
 <table class='grid-table'>
     <div id="infoBox">
-        <p><strong>Original Point</strong>
-            {{ base_point_id }}
+        <h2>Point ID: {{ base_point_id }}</h2>
+        <p><strong>Original Point Location</strong>
             LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
-        <p><strong>Modified Point</strong>
+        <p><strong>Validated Point Location</strong>
            <span id='validated_point_geom'>
            LatLng({{ '%.6f' % validated_point_geom.y }} {{ '%.6f' % validated_point_geom.x }})</span>
         </p>
+        <input class="ui-button ui-widget ui-corner-all" type="submit" value="Next Point In Database">
+        <input class="ui-button ui-widget ui-corner-all" type="submit" value="Next Unvalidated Point">
     </div>
     <div id="mapid"></div>
 </table>
