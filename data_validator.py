@@ -7,6 +7,7 @@ import sys
 import logging
 
 import shapely.wkt
+import shapely.geometry
 from osgeo import gdal
 from flask import Flask
 import flask
@@ -45,12 +46,29 @@ def process_point(point_id):
         with sqlite3.connect(DATABASE_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'SELECT * from base_table WHERE key = ?', (point_id,))
-            database_result = cursor.fetchone()
-            geometry_wkt = database_result[2]
-            geometry = shapely.wkt.loads(geometry_wkt)
+                'SELECT source_id, source_key, data_geom '
+                'from base_table WHERE key = ?', (point_id,))
+            source_id, source_key, geometry_wkt = cursor.fetchone()
+            base_point_geom = shapely.wkt.loads(geometry_wkt)
+            base_point_id = f'{source_id}({source_key})'
+
+            cursor.execute(
+                'SELECT validated_geom '
+                'from validation_table WHERE key = ?', (point_id,))
+            validated_geometry_wkt = cursor.fetchone()
+            if validated_geometry_wkt is not None:
+                validated_geometry = shapely.wkt.loads(
+                    validated_geometry_wkt[0])
+            else:
+                validated_geometry = 'unvalidated'
+
         return flask.render_template(
-            'validation.html', point_data=geometry)
+            'validation.html', **{
+                'point_id': point_id,
+                'base_point_id': base_point_id,
+                'base_point_geom': base_point_geom,
+                'validated_point_geom': validated_geometry,
+            })
     except Exception as e:
         return str(e)
 
@@ -60,8 +78,14 @@ def move_marker():
     """Push event on a marker."""
     try:
         LOGGER.debug('got a post')
-        LOGGER.debug(
-            (flask.request.data.decode('utf-8')))
+        payload = json.loads(flask.request.data.decode('utf-8'))
+        LOGGER.debug(payload)
+        point_geom = shapely.geometry.Point(payload['lng'], payload['lat'])
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT OR REPLACE INTO validation_table VALUES (?, ?)',
+                (point_geom.wkt, payload['point_id']))
         LOGGER.debug('move marker')
         return 'good'
     except:
@@ -85,7 +109,7 @@ def build_base_validation_db(
                 * key (unique key)
             and a table called 'validation_table' with columns:
                 * key (remote to 'base_table')
-                * modified geometry (blob?) - to mark moved geometry?
+                * validated_geom text (wkt of moved point)
         complete_token_path (str): path to file that will be created if
 
 
@@ -105,8 +129,8 @@ def build_base_validation_db(
         ON base_table (key);
 
         CREATE TABLE IF NOT EXISTS validation_table (
-            modified_geom TEXT NOT NULL,
-            key INTEGER NOT NULL,
+            validated_geom TEXT NOT NULL,
+            key INTEGER NOT NULL PRIMARY KEY,
             FOREIGN KEY (key) REFERENCES base_table(key)
         );
 

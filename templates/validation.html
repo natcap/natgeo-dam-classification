@@ -12,6 +12,9 @@
 <script src="js/leaflet-svg-shape-markers.min.js"></script>
 
 <style type="text/css">
+    #infoBox {
+        margin: auto;
+    }
     #mapid {
         margin: auto;
         width: 500px;
@@ -25,13 +28,16 @@
 <h1><img src="images/natcap.png"/> & NatGeo Dam Location Validation</h1>
 <hr>
 <table class='grid-table'>
-    <p>{{ point_data }}</p>
-     <div id="mapid"></div>
+    <div id="infoBox">
+        <p><strong>Original Point</strong> {{ base_point_id }} </p>
+        <p><strong>Modified Point</strong> {{ validated_point_geom }} </p>
+    </div>
+    <div id="mapid"></div>
 </table>
 
 <script type="text/javascript">
     var map = L.map('mapid').setView(
-        [{{ point_data.y }}, {{ point_data.x }}], 13);
+        [{{ base_point_geom.y }}, {{ base_point_geom.x }}], 13);
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
             attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
             maxZoom: 25,
@@ -39,7 +45,7 @@
             accessToken: 'pk.eyJ1IjoicmljaHBzaGFycCIsImEiOiJjanJzdHlib2oyZWRsNDNuM3Rndmh4YnRyIn0.Rs9F-GWbQzllbJAYSJVY1g'
         }).addTo(map);
     var original_point = L.shapeMarker(
-        [{{ point_data.y }}, {{ point_data.x }}], {
+        [{{ base_point_geom.y }}, {{ base_point_geom.x }}], {
             fillColor: "#F00",
             color: "#D00",
             shape: "triangle",
@@ -49,7 +55,7 @@
         }).addTo(map);
 
     var marker = L.marker(
-        [{{ point_data.y }}, {{ point_data.x }}],
+        [{{ base_point_geom.y }}, {{ base_point_geom.x }}],
         {
             title: 'modified dam location',
             alt: 'modified dam location',
@@ -67,7 +73,11 @@
             type: 'POST',
             contentType: 'application/json;charset=UTF-8',
             dataType: 'json',
-            data: JSON.stringify(position)
+            data: JSON.stringify({
+                'lat': position.lat,
+                'lng': position.lng,
+                'point_id': {{ point_id }},
+            })
         });
       });
 
