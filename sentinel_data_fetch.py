@@ -130,7 +130,7 @@ def get_bounding_box_imagery(
 
             manifest_url = f'{url_prefix}/manifest.safe'
             manifest_path = os.path.join(granule_dir, 'manifest.safe')
-            if not os.path.exits(manifest_path):
+            if not os.path.exists(manifest_path):
                 raise StopIteration('manifest not downloaded')
             manifest_task_fetch = task_graph.add_task(
                 func=urllib.request.urlretrieve,
