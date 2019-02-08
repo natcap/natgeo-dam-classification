@@ -42,7 +42,7 @@ LOGGER = logging.getLogger(__name__)
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 
-BB_RADIUS = 2000
+BB_RADIUS = 500
 
 
 def build_index():

@@ -1,4 +1,7 @@
 """Flask app to validata imagery and point locations."""
+import pathlib
+import io
+import zipfile
 import json
 import datetime
 import sqlite3
@@ -75,12 +78,48 @@ def summary_page():
             LOGGER.debug(image_path)
             validated_dam_key_tuple_list.append(
                 (point_id, key, image_path))
+            break
 
     return flask.render_template(
         'summary.html', **{
             'n_points': n_points,
             'validated_dam_key_tuple_list': validated_dam_key_tuple_list,
         })
+
+@APP.route('/download-all-zip')
+def request_zip():
+    """Request zip of all imagery."""
+    image_path_key_list = []
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT count(*) from base_table')
+        cursor.execute(
+            'SELECT source_id, source_key, key, data_geom '
+            'FROM base_table')
+        for payload in cursor:
+            source_id, source_key, key, data_geom = payload
+            point_id = f'{source_id}({source_key})'
+            sample_point = shapely.wkt.loads(payload[3])
+            image_path = sentinel_data_fetch.get_bounding_box_imagery(
+                sample_point, point_id, WORKSPACE_DIR)
+            if image_path is None:
+                continue
+            ext = os.path.splitext(image_path)[1]
+            image_path_key_list.append(
+                (image_path, f'{source_id}_{source_key}{ext}'))
+
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, mode='w') as z:
+        for image_path, arc_path in image_path_key_list:
+            z.write(image_path, arc_path)
+
+    data.seek(0)
+    return flask.send_file(
+        data,
+        mimetype='application/zip',
+        as_attachment=True,
+        attachment_filename='image_dump.zip'
+    )
 
 @APP.route('/<point_id>')
 def process_point(point_id):

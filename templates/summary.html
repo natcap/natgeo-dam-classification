@@ -1,4 +1,6 @@
 <!doctype html>
+<html>
+<head>
 <link rel="stylesheet" href="css/w3.css">
 <style type="text/css">
     #infoBox {
@@ -15,15 +17,20 @@
       color: black;
     }
 </style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 
 <title>NatGeo Sentinel Image Trainer</title>
-<center></center>
+</head>
+<body>
 <h1><img src="images/natcap.png"/> & NatGeo Sentinel Dam Location Summary</h1>
 <hr>
 <h2>Summary Stats</h2>
 <div id="infoBox">
-    <p>{{ n_points}} total points.</p>
+    <p>{{ n_points }} total points.</p>
     <p>{{ validated_dam_key_tuple_list|length }} validated points.</p>
+    <button id='download_imagery'>Download dam imagery</button>
+
 </div>
     <h2>Validated Points</h2>
 <table class='grid-table'>
@@ -35,3 +42,24 @@
     </tr>
     {%- endfor %}
 </table>
+
+<script type="text/javascript">
+    $(function () {
+      $('#download_imagery').click(function (event) {
+        $.ajax({
+            url: '/download-zip',
+            type: 'POST',
+            contentType: 'application/json;charset=UTF-8',
+            dataType: 'json',
+            data: JSON.stringify({
+                image_list: [
+                    {%- for tuple in validated_dam_key_tuple_list %}
+                    String.raw`{{ tuple[2] }}`,
+                    {%- endfor %}]
+                })
+        });
+    });
+});
+</script>
+</body>
+</html>
