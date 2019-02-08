@@ -1,0 +1,15 @@
+<!doctype html>
+<link rel="stylesheet" href="css/w3.css">
+<title>NatGeo Sentinel Image Trainer</title>
+<center></center>
+<h1><img src="images/natcap.png"/> & NatGeo Sentinel Dam Location Summary</h1>
+<hr>
+<h2>Validated Points</h2>
+<table class='grid-table'>
+    {%- for tuple in validated_dam_key_tuple_list %}
+    <tr>
+        <td>{{ tuple[0] }}</td>
+        <td><a href='{{ tuple[1] }}'>Link</a></td>
+    </tr>
+    {%- endfor %}
+</table>

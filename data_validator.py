@@ -52,15 +52,23 @@ def get_unvalidated_point():
         return process_point(unvalidated_point_id)
 
 
-@APP.route('/next_point', methods=['POST'])
-def next_point():
-    """Go forward to backward in point id."""
-    try:
-        payload = json.loads(flask.request.data.decode('utf-8'))
-        return process_point(int(payload['next_point_id']))
-    except:
-        LOGGER.exception("bad stuff")
+@APP.route('/summary')
+def summary_page():
+    with sqlite3.connect(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT source_id, source_key, key '
+            'FROM base_table '
+            'WHERE key in (SELECT key from validation_table)')
+        validated_dam_key_tuple_list = []
+        for payload in cursor:
+            validated_dam_key_tuple_list.append(
+                (f'{payload[0]}({payload[1]})', payload[2]))
 
+    return flask.render_template(
+        'summary.html', **{
+            'validated_dam_key_tuple_list': validated_dam_key_tuple_list,
+        })
 
 @APP.route('/<point_id>')
 def process_point(point_id):

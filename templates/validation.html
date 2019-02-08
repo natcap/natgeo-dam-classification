@@ -98,21 +98,6 @@
         $('span#validated_point_geom').text(position);
     });
 
-    $("#next_point").click(function(e) {
-        e.preventDefault();
-        $.post({
-            url: "/next_point",
-            contentType: 'application/json;charset=UTF-8',
-            data: JSON.stringify({
-                next_prev_mode: 'next',
-                next_point_id: parseInt({{ point_id }}) + 1
-            }),
-            success: function (data) {
-                $("html").html(data);
-            }
-        });
-    });
-
 </script>
 
 </body>
