@@ -1,15 +1,36 @@
 <!doctype html>
 <link rel="stylesheet" href="css/w3.css">
+<style type="text/css">
+    #infoBox {
+        margin: auto;
+        margin-bottom: 10px;
+        width: 500px;
+        font-size: small;
+    }
+    table {
+        font-size: small;
+    }
+    tr:hover {
+      background-color: darkgray;
+      color: black;
+    }
+</style>
+
 <title>NatGeo Sentinel Image Trainer</title>
 <center></center>
 <h1><img src="images/natcap.png"/> & NatGeo Sentinel Dam Location Summary</h1>
 <hr>
-<h2>Validated Points</h2>
+<h2>Summary Stats</h2>
+<div id="infoBox">
+    <p>{{ n_points}} total points.</p>
+    <p>{{ validated_dam_key_tuple_list|length }} validated points.</p>
+</div>
+    <h2>Validated Points</h2>
 <table class='grid-table'>
     {%- for tuple in validated_dam_key_tuple_list %}
     <tr>
         <td>{{ tuple[0] }}</td>
-        <td><a href='{{ tuple[1] }}'>Link</a></td>
+        <td><a href='{{ tuple[1] }}'>Go to map</a></td>
     </tr>
     {%- endfor %}
 </table>

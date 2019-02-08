@@ -56,6 +56,8 @@ def get_unvalidated_point():
 def summary_page():
     with sqlite3.connect(DATABASE_PATH) as conn:
         cursor = conn.cursor()
+        cursor.execute('SELECT count(*) from base_table')
+        n_points = int(cursor.fetchone()[0])
         cursor.execute(
             'SELECT source_id, source_key, key '
             'FROM base_table '
@@ -67,6 +69,7 @@ def summary_page():
 
     return flask.render_template(
         'summary.html', **{
+            'n_points': n_points,
             'validated_dam_key_tuple_list': validated_dam_key_tuple_list,
         })
 
