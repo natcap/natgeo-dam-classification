@@ -107,7 +107,7 @@ def request_zip():
                 sample_point = shapely.wkt.loads(payload[3])
                 LOGGER.debug('fetching imagery for %s', sample_point)
                 image_path = sentinel_data_fetch.get_bounding_box_imagery(
-                    sample_point, point_id, WORKSPACE_DIR)
+                    TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
                 LOGGER.debug('path: %s', image_path)
                 if image_path is None:
                     continue
