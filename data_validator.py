@@ -62,13 +62,19 @@ def summary_page():
         cursor.execute('SELECT count(*) from base_table')
         n_points = int(cursor.fetchone()[0])
         cursor.execute(
-            'SELECT source_id, source_key, key '
+            'SELECT source_id, source_key, key, data_geom '
             'FROM base_table '
             'WHERE key in (SELECT key from validation_table)')
         validated_dam_key_tuple_list = []
         for payload in cursor:
+            source_id, source_key, key, data_geom = payload
+            point_id = f'{source_id}({source_key})'
+            sample_point = shapely.wkt.loads(payload[3])
+            image_path = sentinel_data_fetch.get_bounding_box_imagery(
+                sample_point, point_id, WORKSPACE_DIR)
+            LOGGER.debug(image_path)
             validated_dam_key_tuple_list.append(
-                (f'{payload[0]}({payload[1]})', payload[2]))
+                (point_id, key, image_path))
 
     return flask.render_template(
         'summary.html', **{
