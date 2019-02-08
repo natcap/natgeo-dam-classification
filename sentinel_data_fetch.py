@@ -76,7 +76,6 @@ def build_index(task_graph):
         task_graph, GRAND_VECTOR_BUCKET_ID_TUPLE, IAM_TOKEN_PATH,
         WORKSPACE_DIR)
 
-    task_graph.close()
     task_graph.join()
 
 
