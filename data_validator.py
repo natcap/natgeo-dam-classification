@@ -8,6 +8,7 @@ import sqlite3
 import os
 import sys
 import logging
+import threading
 
 import taskgraph
 import shapely.wkt
@@ -43,45 +44,53 @@ REPORTING_INTERVAL = 5.0
 
 @APP.route('/')
 def entry_point():
-    """This handles the root GET."""
+    """Root GET."""
     return process_point('0')
 
 
 @APP.route('/unvalidated')
 def get_unvalidated_point():
     """Get a point that has not been validated."""
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            'SELECT key '
-            'FROM base_table '
-            'WHERE key not in (SELECT key from validation_table)'
-            'LIMIT 1')
-        unvalidated_point_id = cursor.fetchone()[0]
+    LOGGER.debug('trying to get an unvalidated point')
+    try:
+        LOGGER.debug('acquiring lock')
+        with DB_LOCK:
+            LOGGER.debug("got a lock")
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT key '
+                    'FROM base_table '
+                    'WHERE key not in (SELECT key from validation_table)'
+                    'LIMIT 1')
+                unvalidated_point_id = cursor.fetchone()[0]
         return process_point(unvalidated_point_id)
+    except:
+        LOGGER.exception('exception in unvalidated')
+        raise
 
 
 @APP.route('/summary')
 def summary_page():
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT count(*) from base_table')
-        n_points = int(cursor.fetchone()[0])
-        cursor.execute(
-            'SELECT source_id, source_key, key, data_geom '
-            'FROM base_table '
-            'WHERE key in (SELECT key from validation_table)')
-        validated_dam_key_tuple_list = []
-        for payload in cursor:
-            source_id, source_key, key, data_geom = payload
-            point_id = f'{source_id}({source_key})'
-            sample_point = shapely.wkt.loads(payload[3])
-            image_path = sentinel_data_fetch.get_bounding_box_imagery(
-                TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
-            LOGGER.debug(image_path)
-            validated_dam_key_tuple_list.append(
-                (point_id, key, image_path))
-            break
+    with DB_LOCK:
+        with sqlite3.connect(DATABASE_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT count(*) from base_table')
+            n_points = int(cursor.fetchone()[0])
+            cursor.execute(
+                'SELECT source_id, source_key, key, data_geom '
+                'FROM base_table '
+                'WHERE key in (SELECT key from validation_table)')
+            validated_dam_key_tuple_list = []
+            for payload in cursor:
+                source_id, source_key, key, data_geom = payload
+                point_id = f'{source_id}({source_key})'
+                sample_point = shapely.wkt.loads(payload[3])
+                image_path = sentinel_data_fetch.get_bounding_box_imagery(
+                    TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
+                LOGGER.debug(image_path)
+                validated_dam_key_tuple_list.append(
+                    (point_id, key, image_path))
 
     return flask.render_template(
         'summary.html', **{
@@ -94,26 +103,29 @@ def request_zip():
     """Request zip of all imagery."""
     try:
         image_path_key_list = []
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT count(*) from base_table')
-            cursor.execute(
-                'SELECT source_id, source_key, key, data_geom '
-                'FROM base_table')
-            LOGGER.debug("cursor result: %s", cursor)
-            for payload in cursor:
-                source_id, source_key, key, data_geom = payload
-                point_id = f'{source_id}({source_key})'
-                sample_point = shapely.wkt.loads(payload[3])
-                LOGGER.debug('fetching imagery for %s', sample_point)
-                image_path = sentinel_data_fetch.get_bounding_box_imagery(
-                    TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
-                LOGGER.debug('path: %s', image_path)
-                if image_path is None:
-                    continue
-                ext = os.path.splitext(image_path)[1]
-                image_path_key_list.append(
-                    (image_path, f'{source_id}_{source_key}{ext}'))
+        with DB_LOCK:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT count(*) from base_table')
+                cursor.execute(
+                    'SELECT source_id, source_key, key, data_geom '
+                    'FROM base_table')
+                LOGGER.debug("cursor result: %s", cursor)
+                cursor_payload = list(cursor)
+                cursor = None
+        for payload in cursor_payload:
+            source_id, source_key, key, data_geom = payload
+            point_id = f'{source_id}({source_key})'
+            sample_point = shapely.wkt.loads(payload[3])
+            LOGGER.debug('fetching imagery for %s', sample_point)
+            image_path = sentinel_data_fetch.get_bounding_box_imagery(
+                TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
+            LOGGER.debug('path: %s', image_path)
+            if image_path is None:
+                continue
+            ext = os.path.splitext(image_path)[1]
+            image_path_key_list.append(
+                (image_path, f'{source_id}_{source_key}{ext}'))
 
         data = io.BytesIO()
         with zipfile.ZipFile(data, mode='w') as z:
@@ -131,30 +143,31 @@ def request_zip():
         LOGGER.exception('something bad happened')
         return str(e)
 
-@APP.route('/<point_id>')
+@APP.route('/<int:point_id>')
 def process_point(point_id):
     """Entry page."""
     LOGGER.debug(point_id)
     try:
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                'SELECT source_id, source_key, data_geom '
-                'from base_table WHERE key = ?', (point_id,))
-            source_id, source_key, geometry_wkt = cursor.fetchone()
-            base_point_geom = shapely.wkt.loads(geometry_wkt)
-            base_point_id = f'{source_id}({source_key})'
+        with DB_LOCK:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT source_id, source_key, data_geom '
+                    'from base_table WHERE key = ?', (point_id,))
+                source_id, source_key, geometry_wkt = cursor.fetchone()
+                base_point_geom = shapely.wkt.loads(geometry_wkt)
+                base_point_id = f'{source_id}({source_key})'
 
-            cursor.execute(
-                'SELECT validated_geom '
-                'from validation_table WHERE key = ?', (point_id,))
-            validated_geometry_wkt = cursor.fetchone()
-            if validated_geometry_wkt is not None:
-                validated_geometry = shapely.wkt.loads(
-                    validated_geometry_wkt[0])
-            else:
-                validated_geometry = base_point_geom
-
+                cursor.execute(
+                    'SELECT validated_geom '
+                    'from validation_table WHERE key = ?', (point_id,))
+                validated_geometry_wkt = cursor.fetchone()
+                if validated_geometry_wkt is not None:
+                    validated_geometry = shapely.wkt.loads(
+                        validated_geometry_wkt[0])
+                else:
+                    validated_geometry = base_point_geom
+        LOGGER.debug('rendering validation page')
         return flask.render_template(
             'validation.html', **{
                 'point_id': point_id,
@@ -163,6 +176,7 @@ def process_point(point_id):
                 'validated_point_geom': validated_geometry,
             })
     except Exception as e:
+        LOGGER.exception('exception in process point')
         return str(e)
 
 
@@ -174,11 +188,12 @@ def move_marker():
         payload = json.loads(flask.request.data.decode('utf-8'))
         LOGGER.debug(payload)
         point_geom = shapely.geometry.Point(payload['lng'], payload['lat'])
-        with sqlite3.connect(DATABASE_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                'INSERT OR REPLACE INTO validation_table VALUES (?, ?)',
-                (point_geom.wkt, payload['point_id']))
+        with DB_LOCK:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT OR REPLACE INTO validation_table VALUES (?, ?)',
+                    (point_geom.wkt, payload['point_id']))
         LOGGER.debug('move marker')
         return 'good'
     except:
@@ -230,22 +245,22 @@ def build_base_validation_db(
         CREATE UNIQUE INDEX IF NOT EXISTS validation_table_index
         ON validation_table (key);
         """)
+    with DB_LOCK:
+        with sqlite3.connect(target_database_path) as conn:
+            cursor = conn.cursor()
+            cursor.executescript(sql_create_projects_table)
 
-    with sqlite3.connect(target_database_path) as conn:
-        cursor = conn.cursor()
-        cursor.executescript(sql_create_projects_table)
-
-        next_feature_id = 0
-        for source_id, vector_path, primary_key_id in point_shape_tuple_list:
-            vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
-            layer = vector.GetLayer()
-            for feature in layer:
-                geom = feature.GetGeometryRef()
-                key_val = feature.GetField(primary_key_id)
-                cursor.execute(
-                    'INSERT OR IGNORE INTO base_table VALUES (?, ?, ?, ?)',
-                    (source_id, key_val, geom.ExportToWkt(), next_feature_id))
-                next_feature_id += 1
+            next_feature_id = 0
+            for source_id, vector_path, primary_key_id in point_shape_tuple_list:
+                vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
+                layer = vector.GetLayer()
+                for feature in layer:
+                    geom = feature.GetGeometryRef()
+                    key_val = feature.GetField(primary_key_id)
+                    cursor.execute(
+                        'INSERT OR IGNORE INTO base_table VALUES (?, ?, ?, ?)',
+                        (source_id, key_val, geom.ExportToWkt(), next_feature_id))
+                    next_feature_id += 1
 
     with open(complete_token_path, 'w') as token_file:
         token_file.write(str(datetime.datetime.now()))
@@ -258,6 +273,7 @@ def init():
 if __name__ == '__main__':
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
+    DB_LOCK = threading.Lock()
     sentinel_data_fetch.build_index(TASK_GRAPH)
     complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
