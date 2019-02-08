@@ -12,6 +12,9 @@ from osgeo import gdal
 from flask import Flask
 import flask
 
+import sentinel_data_fetch
+
+
 LOGGER = logging.getLogger(__name__)
 
 logging.basicConfig(
@@ -193,7 +196,13 @@ def build_base_validation_db(
         token_file.write(str(datetime.datetime.now()))
 
 
+def init():
+    """Initialize system."""
+
+
 if __name__ == '__main__':
+    sentinel_data_fetch.build_index()
+
     complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
     build_base_validation_db(
