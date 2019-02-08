@@ -9,6 +9,7 @@ import os
 import sys
 import logging
 
+import taskgraph
 import shapely.wkt
 import shapely.geometry
 from osgeo import gdal
@@ -36,6 +37,8 @@ WORKSPACE_DIR = 'workspace'
 
 VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
+N_WORKERS = -1
+REPORTING_INTERVAL = 5.0
 
 
 @APP.route('/')
@@ -74,7 +77,7 @@ def summary_page():
             point_id = f'{source_id}({source_key})'
             sample_point = shapely.wkt.loads(payload[3])
             image_path = sentinel_data_fetch.get_bounding_box_imagery(
-                sample_point, point_id, WORKSPACE_DIR)
+                TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
             LOGGER.debug(image_path)
             validated_dam_key_tuple_list.append(
                 (point_id, key, image_path))
@@ -253,8 +256,9 @@ def init():
 
 
 if __name__ == '__main__':
-    sentinel_data_fetch.build_index()
-
+    TASK_GRAPH = taskgraph.TaskGraph(
+        WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
+    sentinel_data_fetch.build_index(TASK_GRAPH)
     complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
     build_base_validation_db(

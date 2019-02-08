@@ -19,7 +19,6 @@ from osgeo import osr
 from osgeo import ogr
 import shapely.wkb
 import reproduce
-import taskgraph
 import pygeoprocessing
 
 OPENER = urllib.request.build_opener()
@@ -39,21 +38,24 @@ COVERAGE_VECTOR_PATH = os.path.join(WORKSPACE_DIR, 'grand_coverage.gpkg')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
 
 LOGGER = logging.getLogger(__name__)
-N_WORKERS = -1
-REPORTING_INTERVAL = 5.0
 
 BB_RADIUS = 500
 
 
-def build_index():
-    """Entry point."""
+def build_index(task_graph):
+    """Build database backend for Sentinel imagery.
+
+    Parameters:
+        task_graph (TaskGraph): taskgraph for global scheduling.
+
+    Returns:
+        None.
+
+    """
     try:
         os.makedirs(WORKSPACE_DIR)
     except OSError:
         pass
-
-    task_graph = taskgraph.TaskGraph(
-        WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
 
     download_index_task = task_graph.add_task(
         func=reproduce.utils.google_bucket_fetch,
@@ -78,10 +80,12 @@ def build_index():
     task_graph.join()
 
 
-def get_bounding_box_imagery(sample_point, point_id, workspace_dir):
+def get_bounding_box_imagery(
+        task_graph, sample_point, point_id, workspace_dir):
     """Extract bounding box of grand sentinel imagery around point.
 
     Parameters:
+        task_graph (TaskGraph): taskgraph for global scheduling.
         sample_point (shapely.Point): sample point to center bounding box.
         point_id (string): string to uniquely identify the point for file
             naming schemes.
@@ -91,9 +95,6 @@ def get_bounding_box_imagery(sample_point, point_id, workspace_dir):
         Local file path location of image.
 
     """
-    task_graph = taskgraph.TaskGraph(
-        WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
-
     bounding_box = sample_point.buffer(BB_RADIUS/110000.0).bounds
     with sqlite3.connect(SENTINEL_SQLITE_PATH) as conn:
         cursor = conn.cursor()
