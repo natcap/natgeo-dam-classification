@@ -80,7 +80,8 @@ def build_index(task_graph):
 
 
 def get_bounding_box_imagery(
-        task_graph, sample_point, point_id, workspace_dir):
+        task_graph, sample_point, point_id, workspace_dir,
+        fetch_if_not_downloaded=True):
     """Extract bounding box of grand sentinel imagery around point.
 
     Parameters:
@@ -89,6 +90,8 @@ def get_bounding_box_imagery(
         point_id (string): string to uniquely identify the point for file
             naming schemes.
         workspace_dir (str): path to directory to write results into.
+        fetch_if_not_downloaded (bool): if False, raises a StopIteration if
+            the necessary tile has not been fetched. Otherwise downloads tile.
 
     Returns:
         Local file path location of image.
@@ -127,6 +130,8 @@ def get_bounding_box_imagery(
 
             manifest_url = f'{url_prefix}/manifest.safe'
             manifest_path = os.path.join(granule_dir, 'manifest.safe')
+            if not os.path.exits(manifest_path):
+                raise StopIteration('manifest not downloaded')
             manifest_task_fetch = task_graph.add_task(
                 func=urllib.request.urlretrieve,
                 args=(manifest_url, manifest_path),
