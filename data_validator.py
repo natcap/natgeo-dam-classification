@@ -42,12 +42,16 @@ N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
 
-
 @APP.route('/')
 def entry_point():
     """Root GET."""
     return process_point('0')
 
+@APP.route('/favicon.ico')
+def favicon():
+    return flask.send_from_directory(
+        os.path.join(APP.root_path, 'images'), 'favicon.ico',
+        mimetype='image/vnd.microsoft.icon')
 
 @APP.route('/unvalidated')
 def get_unvalidated_point():
