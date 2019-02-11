@@ -109,8 +109,9 @@
         if ($('textarea#comments').val() != '{{ default_comments_text }}') {
             metadata['comments'] = $('textarea#comments').val()
         }
+        metadata['checkbox_values'] = {}
         $('input[type=checkbox]').each(function () {
-            metadata[$(this).attr('name')] = $(this).is(':checked');
+            metadata['checkbox_values'][$(this).attr('name')] = $(this).is(':checked');
         });
         $.ajax({
             url: '/markermove',
@@ -129,6 +130,11 @@
 
     marker.on('dragend', post_to_server);
     $('textarea#comments').bind('input propertychange', post_to_server);
+    $('input[type=checkbox]').change(post_to_server);
+
+    {% for checkbox_id, checked in checkbox_values.items() %}
+        $('input#{{ checkbox_id }} ').prop('checked', '{{ checked }}' == 'True');
+    {% endfor %}
 
 </script>
 

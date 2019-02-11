@@ -214,13 +214,18 @@ def process_point(point_id):
                 payload = cursor.fetchone()
 
                 # make a default metadata object just in case it's not defined
-                metadata = {'comments': DEFAULT_COMMENT_BOX_TEXT}
+                metadata = {
+                    'comments': DEFAULT_COMMENT_BOX_TEXT,
+                    }
+                checkbox_values = {}
                 if payload is not None:
                     validated_geometry_wkt, metadata_json = payload
                     validated_geometry = shapely.wkt.loads(
                         validated_geometry_wkt)
                     if metadata_json is not None:
                         metadata = json.loads(metadata_json)
+                        if 'checkbox_values' in metadata:
+                            checkbox_values = metadata['checkbox_values']
                 else:
                     validated_geometry = base_point_geom
 
@@ -233,6 +238,7 @@ def process_point(point_id):
                 'validated_point_geom': validated_geometry,
                 'default_comments_text': DEFAULT_COMMENT_BOX_TEXT,
                 'stored_comments_text': metadata['comments'],
+                'checkbox_values': checkbox_values,
             })
     except Exception as e:
         LOGGER.exception('exception in process point')
