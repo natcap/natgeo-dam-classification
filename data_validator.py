@@ -223,6 +223,7 @@ def process_point(point_id):
                 'base_point_id': base_point_id,
                 'base_point_geom': base_point_geom,
                 'validated_point_geom': validated_geometry,
+                'default_comments_text': 'Optional Comments from validator',
             })
     except Exception as e:
         LOGGER.exception('exception in process point')
@@ -241,8 +242,10 @@ def move_marker():
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'INSERT OR REPLACE INTO validation_table VALUES (?, ?)',
-                    (point_geom.wkt, payload['point_id']))
+                    'INSERT OR REPLACE INTO validation_table '
+                    'VALUES (?, ?, ?)',
+                    (point_geom.wkt, payload['point_id'],
+                     json.dumps(payload['metadata'])))
         LOGGER.debug('move marker')
         return 'good'
     except:
@@ -288,6 +291,7 @@ def build_base_validation_db(
         CREATE TABLE IF NOT EXISTS validation_table (
             validated_geom TEXT NOT NULL,
             key INTEGER NOT NULL PRIMARY KEY,
+            metadata TEXT,
             FOREIGN KEY (key) REFERENCES base_table(key)
         );
 
