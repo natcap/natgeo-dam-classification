@@ -43,9 +43,11 @@
             LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
         <p><strong>Validated Point Location</strong>
            <span id='validated_point_geom'>
-           LatLng({{ '%.6f' % validated_point_geom.y }} {{ '%.6f' % validated_point_geom.x }})</span>
+           LatLng({{ '%.6f' % validated_point_geom.y }}, {{ '%.6f' % validated_point_geom.x }})</span>
         </p>
+        {% if point_id|int > 0 %}
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int - 1}}">Prev Point</a>
+        {% endif %}
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
         <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
         <fieldset>
