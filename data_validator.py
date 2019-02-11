@@ -40,6 +40,7 @@ VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
+DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
 
 
 @APP.route('/')
@@ -208,14 +209,21 @@ def process_point(point_id):
                 base_point_id = f'{source_id}({source_key})'
 
                 cursor.execute(
-                    'SELECT validated_geom '
+                    'SELECT validated_geom, metadata '
                     'from validation_table WHERE key = ?', (point_id,))
-                validated_geometry_wkt = cursor.fetchone()
-                if validated_geometry_wkt is not None:
+                payload = cursor.fetchone()
+
+                # make a default metadata object just in case it's not defined
+                metadata = {'comments': DEFAULT_COMMENT_BOX_TEXT}
+                if payload is not None:
+                    validated_geometry_wkt, metadata_json = payload
                     validated_geometry = shapely.wkt.loads(
-                        validated_geometry_wkt[0])
+                        validated_geometry_wkt)
+                    if metadata_json is not None:
+                        metadata = json.loads(metadata_json)
                 else:
                     validated_geometry = base_point_geom
+
         LOGGER.debug('rendering validation page')
         return flask.render_template(
             'validation.html', **{
@@ -223,7 +231,8 @@ def process_point(point_id):
                 'base_point_id': base_point_id,
                 'base_point_geom': base_point_geom,
                 'validated_point_geom': validated_geometry,
-                'default_comments_text': '(optional comments)',
+                'default_comments_text': DEFAULT_COMMENT_BOX_TEXT,
+                'stored_comments_text': metadata['comments'],
             })
     except Exception as e:
         LOGGER.exception('exception in process point')
