@@ -45,11 +45,10 @@
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
         <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
         <textarea
-            name="comments"
+            id="comments"
             rows="4", cols="60",
             onfocus="if(this.value==this.defaultValue)this.value='';"
-            onblur="if(this.value=='')this.value=this.defaultValue;">{{ default_comments_text }}
-        </textarea>
+            onblur="if(this.value=='')this.value=this.defaultValue;">{{ default_comments_text }}</textarea>
 
     </div>
     <div id="mapid"></div>
@@ -92,6 +91,10 @@
         var position = marker.getLatLng();
         marker.setLatLng(new L.LatLng(position.lat, position.lng),{draggable:'true'});
         map.panTo(new L.LatLng(position.lat, position.lng));
+        var metadata = {};
+        if ($('textarea#comments').val() != '{{ default_comments_text }}') {
+            metadata['comments'] = $('textarea#comments').val()
+        }
         $.ajax({
             url: '/markermove',
             type: 'POST',
@@ -101,9 +104,7 @@
                 'lat': position.lat,
                 'lng': position.lng,
                 'point_id': {{ point_id }},
-                'metadata': {
-                    'comments': $(textarea.comments).text
-                },
+                'metadata': metadata,
             })
         });
         $('span#validated_point_geom').text(position);
