@@ -247,6 +247,8 @@ def process_point(point_id):
                         metadata = json.loads(metadata_json)
                         if 'checkbox_values' in metadata:
                             checkbox_values = metadata['checkbox_values']
+                        if 'comments' not in metadata:
+                            metadata['comments'] = DEFAULT_COMMENT_BOX_TEXT
                 else:
                     validated_geometry = base_point_geom
 
