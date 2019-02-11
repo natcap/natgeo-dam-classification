@@ -86,7 +86,7 @@
             color: '#F00'
     }).addTo(map);
 
-    marker.on('dragend', function(event){
+    function post_to_server(event){
         var marker = event.target;
         var position = marker.getLatLng();
         marker.setLatLng(new L.LatLng(position.lat, position.lng),{draggable:'true'});
@@ -108,7 +108,9 @@
             })
         });
         $('span#validated_point_geom').text(position);
-    });
+    };
+
+    marker.on('dragend', post_to_server);
 
 </script>
 
