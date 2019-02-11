@@ -223,7 +223,7 @@ def process_point(point_id):
                 'base_point_id': base_point_id,
                 'base_point_geom': base_point_geom,
                 'validated_point_geom': validated_geometry,
-                'default_comments_text': 'Optional Comments from validator',
+                'default_comments_text': '(optional comments)',
             })
     except Exception as e:
         LOGGER.exception('exception in process point')
