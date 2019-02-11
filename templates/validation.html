@@ -5,14 +5,18 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css"
    integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
    crossorigin=""/>
-<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/base/jquery-ui.css">
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"
    integrity="sha512-QVftwZFqvtRNi0ZyCtsznlKSWOStnDORoefr1enyq5mVL4tmKB3S/EnC3rRJcxCPavG10IcrVGSmPh6Qw5lwrg=="
    crossorigin=""></script>
 <script src="js/leaflet-svg-shape-markers.min.js"></script>
-
+<script>
+    $( function() {
+        $( "input" ).checkboxradio();
+  } );
+</script>
 <style type="text/css">
     #infoBox {
         margin: auto;
@@ -44,6 +48,17 @@
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int - 1}}">Prev Point</a>
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
         <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
+        <fieldset>
+            <legend>What do you see?</legend>
+            <label for="checkbox-underground">Underground Outlet</label>
+            <input type="checkbox" name="checkbox-underground" id="checkbox-underground"><br/>
+            <label for="checkbox-openair">Open Air Outlet</label>
+            <input type="checkbox" name="checkbox-openair" id="checkbox-openair"><br/>
+            <label for="checkbox-no-dam-visible">Water, but no dam visible</label>
+            <input type="checkbox" name="checkbox-no-dam-visible" id="checkbox-no-dam-visible"><br/>
+            <label for="checkbox-bad-imagery">Bad imagery/obscured by cloud</label>
+            <input type="checkbox" name="checkbox-bad-imagery" id="checkbox-bad-imagery">
+        </fieldset>
         <textarea
             id="comments"
             rows="4", cols="60",
@@ -94,6 +109,9 @@
         if ($('textarea#comments').val() != '{{ default_comments_text }}') {
             metadata['comments'] = $('textarea#comments').val()
         }
+        $('input[type=checkbox]').each(function () {
+            metadata[$(this).attr('name')] = $(this).is(':checked');
+        });
         $.ajax({
             url: '/markermove',
             type: 'POST',
