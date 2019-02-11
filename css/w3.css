@@ -2,7 +2,7 @@
     margin: 0;
     background: #202020;
     color: #FFFFFF;
-    background-image: url('./images/noise.png');
+    background-image: url('../images/noise.png');
     background-repeat: repeat;
     font-family: "Segoe UI", "Helvetica Neue", Helvetica, sans-serif;
     font-size: 20px;
