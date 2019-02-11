@@ -1,5 +1,4 @@
 """Flask app to validata imagery and point locations."""
-import pathlib
 import io
 import zipfile
 import json
@@ -9,6 +8,7 @@ import os
 import sys
 import logging
 import threading
+import time
 
 import taskgraph
 import shapely.wkt
@@ -30,6 +30,7 @@ logging.basicConfig(
     stream=sys.stdout)
 
 APP = Flask(__name__, static_url_path='', static_folder='')
+VISITED_POINT_ID_TIMESTAMP_MAP = {}
 
 POINT_DAM_DATA_LIST = [
     ('GRAND', "workspace/GRanD_Version_1_1/GRanD_dams_v1_1.shp", 'GRAND_ID'),
@@ -41,6 +42,7 @@ DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
+ACTIVE_DELAY = 30.0  # wait this many seconds before trying point again
 
 @APP.route('/')
 def entry_point():
@@ -58,22 +60,24 @@ def get_unvalidated_point():
     """Get a point that has not been validated."""
     LOGGER.debug('trying to get an unvalidated point')
     try:
-        LOGGER.debug('acquiring lock')
         with DB_LOCK:
-            LOGGER.debug("got a lock")
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     'SELECT key '
                     'FROM base_table '
-                    'WHERE key not in (SELECT key from validation_table)'
-                    'LIMIT 1')
-                unvalidated_point_id = cursor.fetchone()[0]
+                    'WHERE key not in (SELECT key from validation_table)')
+                flush_visited_point_id_timestamp()
+                with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
+                    for payload in cursor:
+                        unvalidated_point_id = payload[0]
+                        if unvalidated_point_id not in (
+                                VISITED_POINT_ID_TIMESTAMP_MAP):
+                            break
         return process_point(unvalidated_point_id)
     except:
         LOGGER.exception('exception in unvalidated')
         raise
-
 
 @APP.route('/summary')
 def summary_page():
@@ -93,7 +97,6 @@ def summary_page():
                 sample_point = shapely.wkt.loads(payload[3])
                 image_path = sentinel_data_fetch.get_bounding_box_imagery(
                     TASK_GRAPH, sample_point, point_id, WORKSPACE_DIR)
-                LOGGER.debug(image_path)
                 validated_dam_key_tuple_list.append(
                     (point_id, key, image_path))
 
@@ -115,7 +118,6 @@ def download_fetched_zip():
                 cursor.execute(
                     'SELECT source_id, source_key, key, data_geom '
                     'FROM base_table')
-                LOGGER.debug("cursor result: %s", cursor)
                 cursor_payload = list(cursor)
                 cursor = None
         try:
@@ -197,10 +199,25 @@ def download_all_zip():
         LOGGER.exception('something bad happened')
         return str(e)
 
+
+def flush_visited_point_id_timestamp():
+    """Remove old entried in the visited unvalid map."""
+    now = time.time()
+    with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
+        global VISITED_POINT_ID_TIMESTAMP_MAP
+        VISITED_POINT_ID_TIMESTAMP_MAP = {
+            _point_id: _timestamp
+            for _point_id, _timestamp in VISITED_POINT_ID_TIMESTAMP_MAP.items()
+            if _timestamp+ACTIVE_DELAY > now
+        }
+
+
 @APP.route('/<int:point_id>')
 def process_point(point_id):
     """Entry page."""
-    LOGGER.debug(point_id)
+    LOGGER.debug('process point %s', point_id)
+    flush_visited_point_id_timestamp()
+    VISITED_POINT_ID_TIMESTAMP_MAP[point_id] = time.time()
     try:
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
@@ -233,7 +250,6 @@ def process_point(point_id):
                 else:
                     validated_geometry = base_point_geom
 
-        LOGGER.debug('rendering validation page')
         return flask.render_template(
             'validation.html', **{
                 'point_id': point_id,
@@ -346,6 +362,7 @@ if __name__ == '__main__':
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
     DB_LOCK = threading.Lock()
+    VISITED_POINT_ID_TIMESTAMP_MAP_LOCK = threading.Lock()
     sentinel_data_fetch.build_index(TASK_GRAPH)
     complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
