@@ -37,6 +37,11 @@
 <h1><img src="images/natcap.png"/> & NatGeo Dam Location Validation</h1>
 <hr>
 <table class='grid-table'>
+    <tr>
+    <td>
+    <div id="mapid" class="column"></div>
+    </td>
+    <td>
     <div id="infoBox">
         <h2>Point ID: {{ base_point_id }}</h2>
         <p><strong>Original Point Location</strong>
@@ -60,16 +65,15 @@
             <input type="checkbox" name="checkbox-no-dam-visible" id="checkbox-no-dam-visible"><br/>
             <label for="checkbox-bad-imagery">Bad imagery/obscured by cloud</label>
             <input type="checkbox" name="checkbox-bad-imagery" id="checkbox-bad-imagery">
+            <textarea
+                id="comments"
+                rows="4", cols="60",
+                onfocus="if(this.value=='{{ default_comments_text }}')this.value='';"
+                onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea>
         </fieldset>
-        <textarea
-            id="comments"
-            rows="4", cols="60",
-            onfocus="if(this.value=='{{ default_comments_text }}')this.value='';"
-            onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea>
-
     </div>
-    <div id="mapid"></div>
-    <a class="ui-button ui-widget ui-corner-all" href="/summary">See Summary</a>
+    </td>
+</tr>
 </table>
 
 <script type="text/javascript">
