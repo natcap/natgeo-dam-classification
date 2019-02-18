@@ -103,6 +103,33 @@
             alt: 'original dam location',
         }).addTo(map);
 
+    var clicked = false;
+
+    var bounding_box = false;
+
+    map.on('click', function(ev){
+        clicked = !clicked;
+        var latlng = map.mouseEventToLatLng(ev.originalEvent);
+        var bounds = [latlng, latlng];
+        // create an orange rectangle
+        if (clicked && bounding_box) {
+            console.log('removing layer');
+            map.removeLayer(bounding_box);
+        }
+        bounding_box = L.rectangle(
+            bounds, {color: "#ff7800", weight: 1});
+        bounding_box.addTo(map);
+        map.on('mousemove', function(ev) {
+            var current_bounds = bounding_box.getLatLngs();
+            console.log(current_bounds);
+            var movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
+            current_bounds[1] = movedlatlng;
+            bounding_box.setBounds(current_bounds);
+            console.log('moved' + ', ' + latlng.lat + ', ' + latlng.lng);
+        });
+        console.log(clicked + ', ' + latlng.lat + ', ' + latlng.lng);
+    });
+
     var marker = L.marker(
         [{{ base_point_geom.y if not validated_point_geom else validated_point_geom.y }},
          {{ base_point_geom.x if not validated_point_geom else validated_point_geom.x }}],
