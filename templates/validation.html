@@ -107,27 +107,30 @@
 
     var bounding_box = false;
 
+    var first_click_lat_lng = false;
+
+    function bounding_box_move(ev) {
+        var movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
+        bounding_box.setBounds([first_click_lat_lng, movedlatlng]);
+        console.log('moved' + ', ' + first_click_lat_lng.lat + ', ' + first_click_lat_lng.lng);
+    };
+
     map.on('click', function(ev){
         clicked = !clicked;
-        var latlng = map.mouseEventToLatLng(ev.originalEvent);
-        var bounds = [latlng, latlng];
+        first_click_lat_lng = map.mouseEventToLatLng(ev.originalEvent);
+        var bounds = [first_click_lat_lng, first_click_lat_lng];
         // create an orange rectangle
-        if (clicked && bounding_box) {
-            console.log('removing layer');
-            map.removeLayer(bounding_box);
+        if (clicked) {
+            if (bounding_box) {
+                map.removeLayer(bounding_box);
+            }
+            bounding_box = L.rectangle(bounds, {color: "#ff7800", weight: 1});
+            map.on('mousemove', bounding_box_move);
+            bounding_box.addTo(map);
+        } else {
+            map.off('mousemove', bounding_box_move);
         }
-        bounding_box = L.rectangle(
-            bounds, {color: "#ff7800", weight: 1});
-        bounding_box.addTo(map);
-        map.on('mousemove', function(ev) {
-            var current_bounds = bounding_box.getLatLngs();
-            console.log(current_bounds);
-            var movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
-            current_bounds[1] = movedlatlng;
-            bounding_box.setBounds(current_bounds);
-            console.log('moved' + ', ' + latlng.lat + ', ' + latlng.lng);
-        });
-        console.log(clicked + ', ' + latlng.lat + ', ' + latlng.lng);
+        console.log(clicked + ', ' + first_click_lat_lng.lat + ', ' + first_click_lat_lng.lng);
     });
 
     var marker = L.marker(
