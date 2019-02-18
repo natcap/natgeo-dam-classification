@@ -87,6 +87,7 @@
         [{{ base_point_geom.y if not validated_point_geom else validated_point_geom.y }},
          {{ base_point_geom.x if not validated_point_geom else validated_point_geom.x }}],
          13);
+    $('.leaflet-container').css('cursor','crosshair');
     L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
             attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, <a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
             maxZoom: 25,
@@ -104,9 +105,7 @@
         }).addTo(map);
 
     var clicked = false;
-
     var bounding_box = false;
-
     var first_click_lat_lng = false;
 
     function bounding_box_move(ev) {
@@ -124,11 +123,12 @@
             if (bounding_box) {
                 map.removeLayer(bounding_box);
             }
-            bounding_box = L.rectangle(bounds, {color: "#ff7800", weight: 1});
+            bounding_box = L.rectangle(bounds, {color: "#CCAAAA", weight: 1});
             map.on('mousemove', bounding_box_move);
             bounding_box.addTo(map);
         } else {
             map.off('mousemove', bounding_box_move);
+            bounding_box.setStyle({color: "#22ff22", weight: 3});
         }
         console.log(clicked + ', ' + first_click_lat_lng.lat + ', ' + first_click_lat_lng.lng);
     });
