@@ -70,7 +70,8 @@ def get_unvalidated_point():
                 cursor.execute(
                     'SELECT key '
                     'FROM base_table '
-                    'WHERE key not in (SELECT key from validation_table)')
+                    'WHERE key not in (SELECT key from validation_table) '
+                    'ORDER BY RANDOM() LIMIT 1;')
                 flush_visited_point_id_timestamp()
                 with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
                     for payload in cursor:
