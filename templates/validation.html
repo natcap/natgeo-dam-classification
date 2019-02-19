@@ -110,7 +110,9 @@
     var map = L.map('mapid').setView(
         [{{ base_point_geom.y }}, {{ base_point_geom.x }}], 13);
     $('.leaflet-container').css('cursor','crosshair');
-    L.esri.basemapLayer('Imagery').addTo(map);
+    L.esri.basemapLayer('Imagery', {
+        maxZoom: 18,
+    }).addTo(map);
     var esri_minimap_layer = L.esri.basemapLayer('DarkGray');
     var miniMap = new L.Control.MiniMap(
         esri_minimap_layer,
@@ -223,6 +225,7 @@
         if (!clicked && !mouse_in_map) {
             $('#mouse_tip').hide();
         }
+        console.log(map.getZoom());
     });
 
     $("#mapid").mouseenter(function(){
