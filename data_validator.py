@@ -28,7 +28,8 @@ logging.basicConfig(
     stream=sys.stdout)
 
 APP = Flask(__name__, static_url_path='', static_folder='')
-
+APP.config['SECRET_KEY'] = str(os.urandom(16))
+LOGGER.debug(APP.config['SECRET_KEY'])
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
 WORKSPACE_DIR = 'workspace'
 
@@ -47,6 +48,7 @@ DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_bounding_box_db.db')
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
+DEFAULT_NAME_TEXT = '(enter your name or initials)'
 ACTIVE_DELAY = 30.0  # wait this many seconds before trying point again
 
 
@@ -157,6 +159,11 @@ def process_point(point_id):
                         if 'comments' not in metadata:
                             metadata['comments'] = DEFAULT_COMMENT_BOX_TEXT
 
+        if 'username' in flask.session:
+            session_username_text = flask.session['username']
+        else:
+            session_username_text = DEFAULT_NAME_TEXT
+
         return flask.render_template(
             'validation.html', **{
                 'point_id': point_id,
@@ -164,6 +171,8 @@ def process_point(point_id):
                 'base_point_geom': base_point_geom,
                 'bounding_box_bounds': bounding_box_bounds,
                 'default_comments_text': DEFAULT_COMMENT_BOX_TEXT,
+                'default_name_text': DEFAULT_NAME_TEXT,
+                'session_username_text': session_username_text,
                 'stored_comments_text': metadata['comments'],
                 'checkbox_values': checkbox_values,
             })
@@ -171,6 +180,18 @@ def process_point(point_id):
         LOGGER.exception('exception in process point')
         return str(e)
 
+
+
+@APP.route('/update_username', methods=['POST'])
+def update_username():
+    try:
+        LOGGER.debug('change in username')
+        payload = json.loads(flask.request.data.decode('utf-8'))
+        flask.session['username'] = payload['username']
+        return flask.session['username']
+    except:
+        LOGGER.exception('error')
+        return 'error'
 
 @APP.route('/update_dam_data', methods=['POST'])
 def update_dam_data():

@@ -84,10 +84,19 @@
                 onfocus="if(this.value=='{{ default_comments_text }}')this.value='';"
                 onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea>
         </fieldset>
+        <fieldset>
+            <legend>Enter your name/initials for record keeping.</legend>
+            <textarea
+                id="username"
+                rows="1", cols="58",
+                onfocus="if(this.value=='{{ default_name_text }}')this.value='';"
+                onblur="if(this.value=='')this.value='{{ default_name_text }}';">{{ session_username_text }}</textarea>
+        </fieldset>
     </div>
     </td>
 </tr>
 </table>
+<center>{{ session }}</center>
 <center><a href="summary">See Validation Summary Stats</a></center>
 <div id="mouse_tip" style="display: none;">
     click once to start a bounding box
@@ -101,7 +110,7 @@
         [{{ base_point_geom.y }}, {{ base_point_geom.x }}], 13);
     $('.leaflet-container').css('cursor','crosshair');
     L.esri.basemapLayer('Imagery', {
-        maxZoom: 18,
+        maxZoom: 17,
     }).addTo(map);
     var esri_minimap_layer = L.esri.basemapLayer('DarkGray');
     var miniMap = new L.Control.MiniMap(
@@ -191,6 +200,20 @@
         });
     };
 
+    function set_username_session(e) {
+        var payload = {
+            'username': $('textarea#username').val(),
+        };
+        $.ajax({
+            url: '/update_username',
+            type: 'POST',
+            contentType: 'application/json;charset=UTF-8',
+            dataType: 'json',
+            data: JSON.stringify(payload)
+        });
+    };
+
+    $('textarea#username').bind('input propertychange', set_username_session);
     $('textarea#comments').bind('input propertychange', post_to_server);
     $('input[type=checkbox]').change(post_to_server);
     {% for checkbox_id, checked in checkbox_values.items() %}
