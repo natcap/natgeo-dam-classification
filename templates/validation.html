@@ -49,11 +49,11 @@
         <h2>Point ID: {{ base_point_id }}</h2>
         <p><strong>Original Point Location</strong>
             LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
+        <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
+        <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
         {% if point_id|int > 0 %}
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int - 1}}">Prev Point</a>
         {% endif %}
-        <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
-        <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
         <fieldset>
             <legend>What do you see?</legend>
             <label for="checkbox-underground">Underground Outlet</label>
@@ -152,7 +152,7 @@
         });
 
         $.ajax({
-            url: '/markermove',
+            url: '/update_dam_data',
             type: 'POST',
             contentType: 'application/json;charset=UTF-8',
             dataType: 'json',

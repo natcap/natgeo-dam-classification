@@ -148,7 +148,7 @@ def process_point(point_id):
         return str(e)
 
 
-@APP.route('/markermove', methods=['POST'])
+@APP.route('/update_dam_data', methods=['POST'])
 def move_marker():
     """Push event on a marker."""
     try:
