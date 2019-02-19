@@ -74,18 +74,8 @@
         {% endif %}
         <fieldset>
             <legend>What do you see?</legend>
-            <label for="checkbox-underground">Underground Outlet</label>
-            <input type="checkbox" name="checkbox-underground" id="checkbox-underground"><br/>
-            <label for="checkbox-openair">Open Air Outlet</label>
-            <input type="checkbox" name="checkbox-openair" id="checkbox-openair"><br/>
             <label for="checkbox-no-dam-visible">Water, but no dam visible</label>
             <input type="checkbox" name="checkbox-no-dam-visible" id="checkbox-no-dam-visible"><br/>
-            <label for="checkbox-unsure-i-want-a-second-opinion">Unsure -- I want a second opinion</label>
-            <input type="checkbox" name="checkbox-unsure-i-want-a-second-opinion" id="checkbox-unsure-i-want-a-second-opinion"><br/>
-            <label for="checkbox-dam-visible-but-no-water">Dam visible, but no water</label>
-            <input type="checkbox" name="checkbox-dam-visible-but-no-water" id="checkbox-dam-visible-but-no-water"><br/>
-            <label for="checkbox-no-water-no-dam-visible">No water, no dam visible (e.g., obscured by trees)</label>
-            <input type="checkbox" name="checkbox-no-water-no-dam-visible" id="checkbox-no-water-no-dam-visible"><br/>
             <label for="checkbox-bad-imagery">Bad imagery/obscured by cloud</label>
             <input type="checkbox" name="checkbox-bad-imagery" id="checkbox-bad-imagery"><br/>
             <textarea
@@ -225,7 +215,6 @@
         if (!clicked && !mouse_in_map) {
             $('#mouse_tip').hide();
         }
-        console.log(map.getZoom());
     });
 
     $("#mapid").mouseenter(function(){
