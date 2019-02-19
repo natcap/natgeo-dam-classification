@@ -87,12 +87,12 @@ def summary_page():
             cursor.execute('SELECT count(*) from base_table')
             n_points = int(cursor.fetchone()[0])
             cursor.execute(
-                'SELECT source_id, source_key, key, data_geom '
+                'SELECT source_id, source_key, key, source_point_wkt '
                 'FROM base_table '
                 'WHERE key in (SELECT key from validation_table)')
             validated_dam_key_tuple_list = []
             for payload in cursor:
-                source_id, source_key, key, data_geom = payload
+                source_id, source_key, key, source_point_wkt = payload
                 point_id = f'{source_id}({source_key})'
                 sample_point = shapely.wkt.loads(payload[3])
                 image_path = sentinel_data_fetch.get_bounding_box_imagery(
@@ -116,13 +116,13 @@ def download_fetched_zip():
                 cursor = conn.cursor()
                 cursor.execute('SELECT count(*) from base_table')
                 cursor.execute(
-                    'SELECT source_id, source_key, key, data_geom '
+                    'SELECT source_id, source_key, key, source_point_wkt '
                     'FROM base_table')
                 cursor_payload = list(cursor)
                 cursor = None
         try:
             for payload in cursor_payload:
-                source_id, source_key, key, data_geom = payload
+                source_id, source_key, key, source_point_wkt = payload
                 point_id = f'{source_id}({source_key})'
                 sample_point = shapely.wkt.loads(payload[3])
                 LOGGER.debug('fetching imagery for %s', sample_point)
@@ -164,13 +164,13 @@ def download_all_zip():
                 cursor = conn.cursor()
                 cursor.execute('SELECT count(*) from base_table')
                 cursor.execute(
-                    'SELECT source_id, source_key, key, data_geom '
+                    'SELECT source_id, source_key, key, source_point_wkt '
                     'FROM base_table')
                 LOGGER.debug("cursor result: %s", cursor)
                 cursor_payload = list(cursor)
                 cursor = None
         for payload in cursor_payload:
-            source_id, source_key, key, data_geom = payload
+            source_id, source_key, key, source_point_wkt = payload
             point_id = f'{source_id}({source_key})'
             sample_point = shapely.wkt.loads(payload[3])
             LOGGER.debug('fetching imagery for %s', sample_point)
@@ -223,14 +223,14 @@ def process_point(point_id):
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'SELECT source_id, source_key, data_geom '
+                    'SELECT source_id, source_key, source_point_wkt '
                     'from base_table WHERE key = ?', (point_id,))
                 source_id, source_key, geometry_wkt = cursor.fetchone()
                 base_point_geom = shapely.wkt.loads(geometry_wkt)
                 base_point_id = f'{source_id}({source_key})'
 
                 cursor.execute(
-                    'SELECT validated_geom, metadata '
+                    'SELECT bounding_box_bounds, metadata '
                     'from validation_table WHERE key = ?', (point_id,))
                 payload = cursor.fetchone()
 
@@ -238,26 +238,23 @@ def process_point(point_id):
                 metadata = {
                     'comments': DEFAULT_COMMENT_BOX_TEXT,
                     }
+                bounding_box_bounds = None
                 checkbox_values = {}
                 if payload is not None:
-                    validated_geometry_wkt, metadata_json = payload
-                    validated_geometry = shapely.wkt.loads(
-                        validated_geometry_wkt)
+                    bounding_box_bounds, metadata_json = payload
                     if metadata_json is not None:
                         metadata = json.loads(metadata_json)
                         if 'checkbox_values' in metadata:
                             checkbox_values = metadata['checkbox_values']
                         if 'comments' not in metadata:
                             metadata['comments'] = DEFAULT_COMMENT_BOX_TEXT
-                else:
-                    validated_geometry = base_point_geom
 
         return flask.render_template(
             'validation.html', **{
                 'point_id': point_id,
                 'base_point_id': base_point_id,
                 'base_point_geom': base_point_geom,
-                'validated_point_geom': validated_geometry,
+                'bounding_box_bounds': bounding_box_bounds,
                 'default_comments_text': DEFAULT_COMMENT_BOX_TEXT,
                 'stored_comments_text': metadata['comments'],
                 'checkbox_values': checkbox_values,
@@ -274,14 +271,20 @@ def move_marker():
         LOGGER.debug('got a post')
         payload = json.loads(flask.request.data.decode('utf-8'))
         LOGGER.debug(payload)
-        point_geom = shapely.geometry.Point(payload['lng'], payload['lat'])
+        bounding_box_bounds = None
+        if 'bounding_box_bounds' in payload:
+            bounding_box_bounds = [
+                [payload['bounding_box_bounds']['_southWest']['lng'],
+                 payload['bounding_box_bounds']['_southWest']['lat']],
+                [payload['bounding_box_bounds']['_northEast']['lng'],
+                 payload['bounding_box_bounds']['_northEast']['lat']]]
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
                     'INSERT OR REPLACE INTO validation_table '
                     'VALUES (?, ?, ?)',
-                    (point_geom.wkt, payload['point_id'],
+                    (str(bounding_box_bounds), payload['point_id'],
                      json.dumps(payload['metadata'])))
         LOGGER.debug('move marker')
         return 'good'
@@ -306,7 +309,7 @@ def build_base_validation_db(
                 * key (unique key)
             and a table called 'validation_table' with columns:
                 * key (remote to 'base_table')
-                * validated_geom text (wkt of moved point)
+                * bounding_box_bounds text (wkt of moved point)
         complete_token_path (str): path to file that will be created if
 
 
@@ -319,14 +322,14 @@ def build_base_validation_db(
         CREATE TABLE IF NOT EXISTS base_table (
             source_id TEXT NOT NULL,
             source_key TEXT NOT NULL,
-            data_geom TEXT NOT NULL,
+            source_point_wkt TEXT NOT NULL,
             key INTEGER NOT NULL PRIMARY KEY
         );
         CREATE UNIQUE INDEX IF NOT EXISTS base_table_index
         ON base_table (key);
 
         CREATE TABLE IF NOT EXISTS validation_table (
-            validated_geom TEXT NOT NULL,
+            bounding_box_bounds TEXT,
             key INTEGER NOT NULL PRIMARY KEY,
             metadata TEXT,
             FOREIGN KEY (key) REFERENCES base_table(key)

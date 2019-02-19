@@ -49,10 +49,6 @@
         <h2>Point ID: {{ base_point_id }}</h2>
         <p><strong>Original Point Location</strong>
             LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
-        <p><strong>Validated Point Location</strong>
-           <span id='validated_point_geom'>
-           LatLng({{ '%.6f' % validated_point_geom.y }}, {{ '%.6f' % validated_point_geom.x }})</span>
-        </p>
         {% if point_id|int > 0 %}
         <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int - 1}}">Prev Point</a>
         {% endif %}
@@ -86,10 +82,12 @@
 </table>
 
 <script type="text/javascript">
+    var position = {
+        'lat': {{ base_point_geom.y }},
+        'lng': {{ base_point_geom.x }},
+    };
     var map = L.map('mapid').setView(
-        [{{ base_point_geom.y if not validated_point_geom else validated_point_geom.y }},
-         {{ base_point_geom.x if not validated_point_geom else validated_point_geom.x }}],
-         13);
+        [{{ base_point_geom.y }}, {{ base_point_geom.x }}], 13);
     $('.leaflet-container').css('cursor','crosshair');
     L.esri.basemapLayer('Imagery').addTo(map);
     var original_point = L.shapeMarker(
@@ -105,9 +103,10 @@
     var clicked = false;
     var bounding_box = false;
     var first_click_lat_lng = false;
+    var movedlatlng = false;
 
     function bounding_box_move(ev) {
-        var movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
+        movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
         bounding_box.setBounds([first_click_lat_lng, movedlatlng]);
         console.log('moved' + ', ' + first_click_lat_lng.lat + ', ' + first_click_lat_lng.lng);
     };
@@ -127,48 +126,42 @@
         } else {
             map.off('mousemove', bounding_box_move);
             bounding_box.setStyle({color: "#22ff22", weight: 3});
+            post_to_server();
         }
         console.log(clicked + ', ' + first_click_lat_lng.lat + ', ' + first_click_lat_lng.lng);
     });
 
-    var marker = L.marker(
-        [{{ base_point_geom.y if not validated_point_geom else validated_point_geom.y }},
-         {{ base_point_geom.x if not validated_point_geom else validated_point_geom.x }}],
-        {
-            title: 'modified dam location',
-            alt: 'modified dam location',
-            draggable: true,
-            color: '#F00'
-    }).addTo(map);
-
-    function post_to_server(event){
-        var position = marker.getLatLng();
-        marker.setLatLng(new L.LatLng(position.lat, position.lng),{draggable:'true'});
+    function post_to_server(){
         map.panTo(new L.LatLng(position.lat, position.lng));
         var metadata = {};
         if ($('textarea#comments').val() != '{{ default_comments_text }}') {
             metadata['comments'] = $('textarea#comments').val()
         }
-        metadata['checkbox_values'] = {}
+        var payload = {
+            'lat': position.lat,
+            'lng': position.lng,
+            'point_id': {{ point_id }},
+            'metadata': {
+                'checkbox_values': {}
+            }
+        };
+        if (bounding_box) {
+            payload['bounding_box_bounds'] = bounding_box.getBounds()
+        };
         $('input[type=checkbox]').each(function () {
-            metadata['checkbox_values'][$(this).attr('name')] = $(this).is(':checked');
+            payload['metadata']['checkbox_values'][$(this).attr('name')] = (
+                $(this).is(':checked'));
         });
+
         $.ajax({
             url: '/markermove',
             type: 'POST',
             contentType: 'application/json;charset=UTF-8',
             dataType: 'json',
-            data: JSON.stringify({
-                'lat': position.lat,
-                'lng': position.lng,
-                'point_id': {{ point_id }},
-                'metadata': metadata,
-            })
+            data: JSON.stringify(payload)
         });
-        $('span#validated_point_geom').text(position);
     };
 
-    marker.on('dragend', post_to_server);
     $('textarea#comments').bind('input propertychange', post_to_server);
     $('input[type=checkbox]').change(post_to_server);
 
