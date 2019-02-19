@@ -80,7 +80,9 @@
     </td>
 </tr>
 </table>
-
+<div id="mouse_tip" style="display: none;">
+    click once to start a bounding box
+</div>
 <script type="text/javascript">
     var position = {
         'lat': {{ base_point_geom.y }},
@@ -122,6 +124,7 @@
             bounding_box = L.rectangle(bounds, {color: "#CCAAAA", weight: 1});
             map.on('mousemove', bounding_box_move);
             bounding_box.addTo(map);
+            $('#mouse_tip').hide();
         } else {
             map.off('mousemove', bounding_box_move);
             bounding_box.setStyle({color: "#22ff22", weight: 3});
@@ -174,8 +177,24 @@
     map.fitBounds(bounding_box.getBounds());
     {% endif %}
 
-
+    $(document).bind('mousemove', function(e){
+        if (!clicked && !bounding_box) {
+            $('#mouse_tip').css({
+                'position': "absolute",
+                'float': "left",
+                'left':  e.pageX + 5,
+                'top':   e.pageY - 55,
+                'z-index': 1000,
+                'width': '100px',
+                'font-size': 'small',
+                'background-color': 'rgba(200, 50, 50, 0.6)',
+                'color': 'rgb(255, 255, 255)',
+                'font-weight': 'bold',
+                'text-align': 'center',
+                'border': '1px solid black'
+            }).fadeIn(100);
+        };
+});
 </script>
-
 </body>
 </html>
