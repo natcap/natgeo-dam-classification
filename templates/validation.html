@@ -66,26 +66,23 @@
         <h2>Point ID: {{ base_point_id }}</h2>
         <p><strong>Original Point Location</strong>
             LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
-        <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
         <fieldset>
-            <legend>What do you see?</legend>
+            <legend>Data Entry</legend>
+            <textarea
+                id="username"
+                rows="1", cols="40",
+                onfocus="if(this.value=='{{ default_name_text }}')this.value='';"
+                onblur="if(this.value=='')this.value='{{ default_name_text }}';">{{ session_username_text }}</textarea>
             <label for="checkbox-no-dam-visible">Water, but no dam visible</label>
             <input type="checkbox" name="checkbox-no-dam-visible" id="checkbox-no-dam-visible"><br/>
             <label for="checkbox-bad-imagery">Bad imagery/obscured by cloud</label>
             <input type="checkbox" name="checkbox-bad-imagery" id="checkbox-bad-imagery"><br/>
             <textarea
                 id="comments"
-                rows="4", cols="58",
+                rows="2", cols="40",
                 onfocus="if(this.value=='{{ default_comments_text }}')this.value='';"
-                onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea>
-        </fieldset>
-        <fieldset>
-            <legend>Enter your name/initials for record keeping.</legend>
-            <textarea
-                id="username"
-                rows="1", cols="58",
-                onfocus="if(this.value=='{{ default_name_text }}')this.value='';"
-                onblur="if(this.value=='')this.value='{{ default_name_text }}';">{{ session_username_text }}</textarea>
+                onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea><br/>
+            <a id='nextpoint' class="ui-button ui-widget ui-corner-all" href="/unvalidated">Submit/Skip and go to next dam</a>
         </fieldset>
     </div>
     </td>
@@ -96,6 +93,7 @@
 <div id="mouse_tip" style="display: none;">
     click once to start a bounding box
 </div>
+</body>
 <script type="text/javascript">
     var position = {
         'lat': {{ base_point_geom.y }},
@@ -105,7 +103,7 @@
         [{{ base_point_geom.y }}, {{ base_point_geom.x }}], 13);
     $('.leaflet-container').css('cursor','crosshair');
     L.esri.basemapLayer('Imagery', {
-        maxZoom: 17,
+        maxZoom: 18,
     }).addTo(map);
     var esri_minimap_layer = L.esri.basemapLayer('DarkGray');
     var miniMap = new L.Control.MiniMap(
@@ -160,7 +158,6 @@
         } else {
             map.off('mousemove', bounding_box_move);
             bounding_box.setStyle({color: "#22ff22", weight: 3});
-            post_to_server();
             map.panTo(bounding_box.getCenter());
             map.fitBounds(bounding_box.getBounds());
         }
@@ -206,11 +203,12 @@
             dataType: 'json',
             data: JSON.stringify(payload)
         });
+        if ($("textarea#username").val() != '{{ default_name_text }}') {
+            $("#nextpoint").button("enable");
+        }
     };
 
     $('textarea#username').bind('input propertychange', set_username_session);
-    $('textarea#comments').bind('input propertychange', post_to_server);
-    $('input[type=checkbox]').change(post_to_server);
     {% for checkbox_id, checked in checkbox_values.items() %}
         $('input#{{ checkbox_id }} ').prop('checked', '{{ checked }}' == 'True');
     {% endfor %}
@@ -235,11 +233,19 @@
         }
     });
 
+    $('a#nextpoint').click(function (e) {
+        post_to_server(e);
+    });
+
     $("#mapid").mouseenter(function(){
         mouse_in_map = true;
     }).mouseleave(function(){
         mouse_in_map = false;
+
     });
+    $(function() {
+        if ($("textarea#username").val() == '{{ default_name_text }}') {
+            $("#nextpoint").button().button("disable");
+    }});
 </script>
-</body>
 </html>
