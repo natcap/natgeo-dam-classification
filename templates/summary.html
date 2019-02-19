@@ -12,10 +12,6 @@
     table {
         font-size: small;
     }
-    tr:hover {
-      background-color: darkgray;
-      color: black;
-    }
 </style>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
@@ -27,20 +23,19 @@
 <hr>
 <h2>Summary Stats</h2>
 <div id="infoBox">
-    <p>{{ n_points }} total points.</p>
-    <p>{{ validated_dam_key_tuple_list|length }} validated points.</p>
+    <p><b>{{ total_count }}</b> total dam records.</p>
+    <p><b>{{ total_count-unvalidated_count }}</b> dams validated,
+       <b>{{ '%.2f%%' % (100.0*(total_count-unvalidated_count)/total_count) }}</b> complete.</p>
 
+<h2>Databases Used</h2>
+<dl>
+    {% for database_id, database_info in database_dict.items() %}
+        <dt>{{ database_id }}</dt>
+        <dd><a href="{{ database_info.database_url }}">{{ database_info.database_url }}</a></dd>
+    {% endfor %}
+</dl>
+<h2><a href="/">Back to validation</a></h2>
 </div>
-    <h2>Validated Points</h2>
-<table class='grid-table'>
-    {%- for tuple in validated_dam_key_tuple_list %}
-    <tr>
-        <td>{{ tuple[0] }}</td>
-        <td><a href='{{ tuple[1] }}'>Go to map</a></td>
-        <td><img src='{{ tuple[2] }}'/></td>
-    </tr>
-    {%- endfor %}
-</table>
 
 </body>
 </html>

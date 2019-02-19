@@ -30,13 +30,25 @@
     #mapid {
         margin: auto;
         width: 500px;
-        height: 500px; }
+        height: 500px;
+    }
+    #mouse_tip {
+        position: absolute;
+        float: left;
+        z-index: 1000;
+        width: 100px;
+        font-size: small;
+        background-color: rgba(200, 50, 50, 0.6);
+        color: rgb(255, 255, 255);
+        font-weight: bold;
+        text-align: center;
+        border: 1px solid black;
+    }
 </style>
 
 <title>NatGeo Dam Validator</title>
 </head>
 <body>
-<center></center>
 <h1><img src="images/natcap.png"/> & NatGeo Dam Location Validation</h1>
 <hr>
 <table class='grid-table'>
@@ -80,6 +92,7 @@
     </td>
 </tr>
 </table>
+<center><a href="summary">See Validation Summary Stats</a></center>
 <div id="mouse_tip" style="display: none;">
     click once to start a bounding box
 </div>
@@ -106,6 +119,7 @@
     var bounding_box = false;
     var first_click_lat_lng = false;
     var movedlatlng = false;
+    var mouse_in_map = true;
 
     function bounding_box_move(ev) {
         movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
@@ -178,23 +192,22 @@
     {% endif %}
 
     $(document).bind('mousemove', function(e){
-        if (!clicked && !bounding_box) {
+        if (!clicked && !bounding_box && mouse_in_map) {
             $('#mouse_tip').css({
-                'position': "absolute",
-                'float': "left",
                 'left':  e.pageX + 5,
                 'top':   e.pageY - 55,
-                'z-index': 1000,
-                'width': '100px',
-                'font-size': 'small',
-                'background-color': 'rgba(200, 50, 50, 0.6)',
-                'color': 'rgb(255, 255, 255)',
-                'font-weight': 'bold',
-                'text-align': 'center',
-                'border': '1px solid black'
-            }).fadeIn(100);
+            }).show();
         };
-});
+        if (!clicked && !mouse_in_map) {
+            $('#mouse_tip').hide();
+        }
+    });
+
+    $("#mapid").mouseenter(function(){
+        mouse_in_map = true;
+    }).mouseleave(function(){
+        mouse_in_map = false;
+    });
 </script>
 </body>
 </html>

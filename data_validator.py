@@ -82,6 +82,32 @@ def get_unvalidated_point():
         raise
 
 
+@APP.route('/summary')
+def render_summary():
+    """Get a point that has not been validated."""
+    try:
+        with DB_LOCK:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                # rows validated
+                cursor.execute(
+                    'SELECT count(1) '
+                    'FROM base_table '
+                    'WHERE key not in (SELECT key from validation_table)')
+                unvalidated_count = cursor.fetchone()[0]
+                cursor.execute('SELECT count(1) FROM base_table')
+                total_count = cursor.fetchone()[0]
+        return flask.render_template(
+            'summary.html', **{
+                'unvalidated_count': unvalidated_count,
+                'total_count': total_count,
+                'database_dict': POINT_DAM_DATA_MAP
+            })
+    except:
+        LOGGER.exception('exception render_summary')
+        raise
+
+
 def flush_visited_point_id_timestamp():
     """Remove old entried in the visited unvalid map."""
     now = time.time()
@@ -147,7 +173,7 @@ def process_point(point_id):
 
 
 @APP.route('/update_dam_data', methods=['POST'])
-def move_marker():
+def update_dam_data():
     """Push event on a marker."""
     try:
         LOGGER.debug('got a post')
