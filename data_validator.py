@@ -1,5 +1,4 @@
 """Flask app to validata imagery and point locations."""
-import io
 import zipfile
 import json
 import datetime
@@ -29,6 +28,7 @@ logging.basicConfig(
     stream=sys.stdout)
 
 APP = Flask(__name__, static_url_path='', static_folder='')
+
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
 WORKSPACE_DIR = 'workspace'
 
@@ -49,16 +49,19 @@ REPORTING_INTERVAL = 5.0
 DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
 ACTIVE_DELAY = 30.0  # wait this many seconds before trying point again
 
+
 @APP.route('/')
 def entry_point():
     """Root GET."""
     return process_point('0')
+
 
 @APP.route('/favicon.ico')
 def favicon():
     return flask.send_from_directory(
         os.path.join(APP.root_path, 'images'), 'favicon.ico',
         mimetype='image/vnd.microsoft.icon')
+
 
 @APP.route('/unvalidated')
 def get_unvalidated_point():
@@ -83,6 +86,7 @@ def get_unvalidated_point():
     except:
         LOGGER.exception('exception in unvalidated')
         raise
+
 
 def flush_visited_point_id_timestamp():
     """Remove old entried in the visited unvalid map."""
@@ -198,10 +202,9 @@ def build_base_validation_db(
                 * bounding_box_bounds text (wkt of moved point)
         complete_token_path (str): path to file that will be created if
 
-
-
     Returns:
         None.
+
     """
     sql_create_projects_table = (
         """
