@@ -131,12 +131,8 @@
         console.log(clicked + ', ' + first_click_lat_lng.lat + ', ' + first_click_lat_lng.lng);
     });
 
-    function post_to_server(){
+    function post_to_server(e){
         map.panTo(new L.LatLng(position.lat, position.lng));
-        var metadata = {};
-        if ($('textarea#comments').val() != '{{ default_comments_text }}') {
-            metadata['comments'] = $('textarea#comments').val()
-        }
         var payload = {
             'lat': position.lat,
             'lng': position.lng,
@@ -145,6 +141,9 @@
                 'checkbox_values': {}
             }
         };
+        if ($('textarea#comments').val() != '{{ default_comments_text }}') {
+            payload['metadata']['comments'] = $('textarea#comments').val()
+        }
         if (bounding_box) {
             payload['bounding_box_bounds'] = bounding_box.getBounds()
         };
@@ -164,7 +163,6 @@
 
     $('textarea#comments').bind('input propertychange', post_to_server);
     $('input[type=checkbox]').change(post_to_server);
-
     {% for checkbox_id, checked in checkbox_values.items() %}
         $('input#{{ checkbox_id }} ').prop('checked', '{{ checked }}' == 'True');
     {% endfor %}
