@@ -71,24 +71,25 @@
             <textarea
                 id="username"
                 rows="1", cols="40",
+                class="ui-widget ui-corner-all",
                 onfocus="if(this.value=='{{ default_name_text }}')this.value='';"
-                onblur="if(this.value=='')this.value='{{ default_name_text }}';">{{ session_username_text }}</textarea>
+                onblur="if(this.value=='')this.value='{{ default_name_text }}';">{{ session_username_text }}</textarea><br/>
             <label for="checkbox-no-dam-visible">Water, but no dam visible</label>
             <input type="checkbox" name="checkbox-no-dam-visible" id="checkbox-no-dam-visible"><br/>
             <label for="checkbox-bad-imagery">Bad imagery/obscured by cloud</label>
             <input type="checkbox" name="checkbox-bad-imagery" id="checkbox-bad-imagery"><br/>
             <textarea
                 id="comments"
-                rows="2", cols="40",
+                class="ui-widget ui-corner-all"
+                rows="1", cols="40",
                 onfocus="if(this.value=='{{ default_comments_text }}')this.value='';"
                 onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea><br/>
-            <a id='nextpoint' class="ui-button ui-widget ui-corner-all" href="/unvalidated">Submit/Skip and go to next dam</a>
+            <a id='nextpoint' class="ui-button ui-widget ui-corner-all" href="/unvalidated">Submit/Go To Next Dam</a>
         </fieldset>
     </div>
     </td>
 </tr>
 </table>
-<center>{{ session }}</center>
 <center><a href="summary">See Validation Summary Stats</a></center>
 <div id="mouse_tip" style="display: none;">
     click once to start a bounding box
@@ -135,7 +136,7 @@
     var bounding_box = false;
     var first_click_lat_lng = false;
     var movedlatlng = false;
-    var mouse_in_map = true;
+    var mouse_in_map = false;
 
     function bounding_box_move(ev) {
         movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
@@ -204,7 +205,10 @@
             data: JSON.stringify(payload)
         });
         if ($("textarea#username").val() != '{{ default_name_text }}') {
-            $("#nextpoint").button("enable");
+            $("#nextpoint").show();
+            $("#checkbox-no-dam-visible").checkboxradio("enable");
+            $("#checkbox-bad-imagery").checkboxradio("enable");
+            $("#comments").removeAttr("disabled");
         }
     };
 
@@ -245,7 +249,10 @@
     });
     $(function() {
         if ($("textarea#username").val() == '{{ default_name_text }}') {
-            $("#nextpoint").button().button("disable");
+            $("#nextpoint").button().hide();
+            $("#checkbox-no-dam-visible").checkboxradio().checkboxradio("disable");
+            $("#checkbox-bad-imagery").checkboxradio().checkboxradio("disable");
+            $("#comments").attr("disabled", "disabled");
     }});
 </script>
 </html>
