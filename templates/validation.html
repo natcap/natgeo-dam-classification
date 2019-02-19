@@ -74,10 +74,12 @@
                 class="ui-widget ui-corner-all",
                 onfocus="if(this.value=='{{ default_name_text }}')this.value='';"
                 onblur="if(this.value=='')this.value='{{ default_name_text }}';">{{ session_username_text }}</textarea><br/>
-            <label for="checkbox-no-dam-visible">Water, but no dam visible</label>
+            <label for="checkbox-no-dam-visible">Clear imagery, but no dam visible</label>
             <input type="checkbox" name="checkbox-no-dam-visible" id="checkbox-no-dam-visible"><br/>
             <label for="checkbox-bad-imagery">Bad imagery/obscured by cloud</label>
             <input type="checkbox" name="checkbox-bad-imagery" id="checkbox-bad-imagery"><br/>
+            <label for="unsure">Unsure</label>
+            <input type="checkbox" name="unsure" id="unsure"><br/>
             <textarea
                 id="comments"
                 class="ui-widget ui-corner-all"
@@ -206,8 +208,7 @@
         });
         if ($("textarea#username").val() != '{{ default_name_text }}') {
             $("#nextpoint").show();
-            $("#checkbox-no-dam-visible").checkboxradio("enable");
-            $("#checkbox-bad-imagery").checkboxradio("enable");
+            $("input").checkboxradio().checkboxradio("enable");
             $("#comments").removeAttr("disabled");
         }
     };
@@ -250,8 +251,7 @@
     $(function() {
         if ($("textarea#username").val() == '{{ default_name_text }}') {
             $("#nextpoint").button().hide();
-            $("#checkbox-no-dam-visible").checkboxradio().checkboxradio("disable");
-            $("#checkbox-bad-imagery").checkboxradio().checkboxradio("disable");
+            $("input").checkboxradio().checkboxradio("disable");
             $("#comments").attr("disabled", "disabled");
     }});
 </script>
