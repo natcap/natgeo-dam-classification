@@ -210,9 +210,11 @@ def update_dam_data():
                 cursor = conn.cursor()
                 cursor.execute(
                     'INSERT OR REPLACE INTO validation_table '
-                    'VALUES (?, ?, ?)',
+                    'VALUES (?, ?, ?, ?, ?)',
                     (str(bounding_box_bounds), payload['point_id'],
-                     json.dumps(payload['metadata'])))
+                     json.dumps(payload['metadata']),
+                     flask.session['username'],
+                     str(datetime.datetime.utcnow())))
         LOGGER.debug('move marker')
         return 'good'
     except:
@@ -263,6 +265,8 @@ def build_base_validation_db(
             bounding_box_bounds TEXT,
             key INTEGER NOT NULL PRIMARY KEY,
             metadata TEXT,
+            username TEXT,
+            time_date TEXT,
             FOREIGN KEY (key) REFERENCES base_table(key)
         );
 

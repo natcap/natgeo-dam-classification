@@ -41,9 +41,8 @@
         z-index: 1000;
         width: 100px;
         font-size: small;
-        background-color: rgba(200, 50, 50, 0.6);
+        background-color: rgba(200, 50, 50, 0.2);
         color: rgb(255, 255, 255);
-        font-weight: bold;
         text-align: center;
         border: 1px solid black;
     }
@@ -68,10 +67,6 @@
         <p><strong>Original Point Location</strong>
             LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
         <a class="ui-button ui-widget ui-corner-all" href="/unvalidated">Next Unvalidated Point</a>
-        <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int + 1}}">Next Point</a>
-        {% if point_id|int > 0 %}
-        <a class="ui-button ui-widget ui-corner-all" href="/{{ point_id|int - 1}}">Prev Point</a>
-        {% endif %}
         <fieldset>
             <legend>What do you see?</legend>
             <label for="checkbox-no-dam-visible">Water, but no dam visible</label>
