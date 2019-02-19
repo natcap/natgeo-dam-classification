@@ -127,11 +127,11 @@
             bounding_box.setStyle({color: "#22ff22", weight: 3});
             post_to_server();
             map.panTo(bounding_box.getCenter());
+            map.fitBounds(bounding_box.getBounds());
         }
     });
 
     function post_to_server(e){
-        map.panTo(new L.LatLng(position.lat, position.lng));
         var payload = {
             'lat': position.lat,
             'lng': position.lng,
@@ -171,6 +171,7 @@
         {{ bounding_box_bounds|safe }}, {color: "#22ff22", weight: 1});
     bounding_box.addTo(map);
     map.panTo(bounding_box.getCenter());
+    map.fitBounds(bounding_box.getBounds());
     {% endif %}
 
 

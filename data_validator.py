@@ -261,10 +261,6 @@ def download_and_unzip(url, target_path, token_file):
         zip_ref.extractall(os.path.dirname(target_path))
 
 
-def init():
-    """Initialize system."""
-
-
 if __name__ == '__main__':
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
