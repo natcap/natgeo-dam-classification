@@ -38,7 +38,7 @@ POINT_DAM_DATA_LIST = [
 WORKSPACE_DIR = 'workspace'
 
 VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
-DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_point_db.db')
+DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_bounding_box_db.db')
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
