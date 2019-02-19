@@ -167,6 +167,13 @@
         $('input#{{ checkbox_id }} ').prop('checked', '{{ checked }}' == 'True');
     {% endfor %}
 
+    {% if bounding_box_bounds != None %}
+    bounding_box = L.rectangle(
+        {{ bounding_box_bounds|safe }}, {color: "#22ff22", weight: 1});
+    bounding_box.addTo(map);
+    {% endif %}
+
+
 </script>
 
 </body>

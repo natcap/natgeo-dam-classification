@@ -274,10 +274,8 @@ def move_marker():
         bounding_box_bounds = None
         if 'bounding_box_bounds' in payload:
             bounding_box_bounds = [
-                [payload['bounding_box_bounds']['_southWest']['lng'],
-                 payload['bounding_box_bounds']['_southWest']['lat']],
-                [payload['bounding_box_bounds']['_northEast']['lng'],
-                 payload['bounding_box_bounds']['_northEast']['lat']]]
+                payload['bounding_box_bounds']['_southWest'],
+                payload['bounding_box_bounds']['_northEast']]
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
