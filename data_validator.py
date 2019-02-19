@@ -107,11 +107,11 @@ def process_point(point_id):
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    'SELECT source_id, source_key, source_point_wkt '
+                    'SELECT database_id, source_key, source_point_wkt '
                     'from base_table WHERE key = ?', (point_id,))
-                source_id, source_key, geometry_wkt = cursor.fetchone()
+                database_id, source_key, geometry_wkt = cursor.fetchone()
                 base_point_geom = shapely.wkt.loads(geometry_wkt)
-                base_point_id = f'{source_id}({source_key})'
+                base_point_id = f'{database_id}({source_key})'
 
                 cursor.execute(
                     'SELECT bounding_box_bounds, metadata '
@@ -211,6 +211,7 @@ def build_base_validation_db(
             source_point_wkt TEXT NOT NULL,
             key INTEGER NOT NULL PRIMARY KEY
         );
+
         CREATE UNIQUE INDEX IF NOT EXISTS base_table_index
         ON base_table (key);
 
