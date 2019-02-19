@@ -272,9 +272,13 @@ if __name__ == '__main__':
     VISITED_POINT_ID_TIMESTAMP_MAP_LOCK = threading.Lock()
     complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
+    expected_database_path_list = [
+        db_map['database_expected_path']
+        for db_map in POINT_DAM_DATA_MAP.values()]
     TASK_GRAPH.add_task(
         func=build_base_validation_db,
         args=(POINT_DAM_DATA_MAP, DATABASE_PATH, complete_token_path),
         target_path_list=[complete_token_path],
+        ignore_path_list=expected_database_path_list,
         task_name='build the dam database')
     APP.run(host='0.0.0.0', port=8080)
