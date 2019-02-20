@@ -28,7 +28,7 @@ logging.basicConfig(
     stream=sys.stdout)
 
 APP = Flask(__name__, static_url_path='', static_folder='')
-APP.config['SECRET_KEY'] = str(os.urandom(16))
+APP.config['SECRET_KEY'] = b'\xe2\xa9\xd2\x82\xd5r\xef\xdb\xffK\x97\xcfM\xa2WH'
 LOGGER.debug(APP.config['SECRET_KEY'])
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
 WORKSPACE_DIR = 'workspace'
@@ -100,11 +100,20 @@ def render_summary():
                 unvalidated_count = cursor.fetchone()[0]
                 cursor.execute('SELECT count(1) FROM base_table')
                 total_count = cursor.fetchone()[0]
+
+                cursor.execute(
+                    'SELECT username, count(username) '
+                    'FROM validation_table '
+                    'GROUP by username '
+                    'ORDER BY count(username) DESC')
+                user_contribution_list = cursor.fetchall()
+
         return flask.render_template(
             'summary.html', **{
                 'unvalidated_count': unvalidated_count,
                 'total_count': total_count,
-                'database_dict': POINT_DAM_DATA_MAP
+                'database_dict': POINT_DAM_DATA_MAP,
+                'user_contribution_list': user_contribution_list,
             })
     except:
         LOGGER.exception('exception render_summary')
