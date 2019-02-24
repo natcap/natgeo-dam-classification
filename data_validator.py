@@ -9,6 +9,7 @@ import logging
 import threading
 import time
 
+import pandas
 import reproduce.utils
 import taskgraph
 import shapely.wkt
@@ -33,15 +34,90 @@ LOGGER.debug(APP.config['SECRET_KEY'])
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
 WORKSPACE_DIR = 'workspace'
 
-GRAND_VERSION_1_1 = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip'
-POINT_DAM_DATA_MAP = {
-    'GRAND': {
-        'database_url': GRAND_VERSION_1_1,
+GRAND_VERSION_1_1_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip'
+USNID_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/NID2018_U_2019_02_10_md5_305b5bf747c95653725fecfee94bddf5.xlsx'
+
+
+def parse_shapefile(db_key, description_key):
+    """Create closure to xtract db key, description, and geom from base path.
+
+    Parameters:
+        db_key (str): field that identifies the unique key in this database
+        description_key (str): field that identifies the dam description in
+            this database
+
+    Returns:
+        a list of (base_db_key, description, geom) tuples from the data in
+        this database.
+
+    """
+    def _parse_shapefile(base_path):
+        """Extract db key, description, and geom from base path.
+
+        Parameters:
+            base_path (str): path to a database, may be gdal vector, excel, or
+                more.
+
+        Returns:
+            a list of (base_db_key, description, geom) tuples from the data in
+            this database.
+
+        """
+        result_list = []
+        vector = gdal.OpenEx(base_path, gdal.OF_VECTOR)
+        layer = vector.GetLayer()
+        for feature in layer:
+            geom = feature.GetGeometryRef()
+            result_list.append((
+                feature.GetField(db_key),
+                feature.GetField(description_key),
+                geom.ExportToWkt()))
+
+        return result_list
+    return _parse_shapefile
+
+
+def usnid_parse(db_path):
+    """Extract db key, description, and geom from USNID .
+
+    Parameters:
+        base_path (str): path to a database, may be gdal vector, excel, or
+            more.
+
+    Returns:
+        a list of (base_db_key, description, geom) tuples from the data in
+        this database.
+
+    """
+    nid_df = pandas.read_excel(db_path)
+    # filter out everything that's not at least hydropower
+    nid_df = nid_df.dropna(subset=['PURPOSES'])
+    filtered_nid_df = nid_df[nid_df['PURPOSES'].str.contains('H')]
+    result = filtered_nid_df[
+        ['NIDID', 'DAM_NAME', 'LONGITUDE', 'LATITUDE']].to_dict('records')
+    # convert to result list and make wkt points
+    result_list = [
+        (db['NIDID'], db['DAM_NAME'],
+         shapely.geometry.Point(db['LONGITUDE'], db['LATITUDE']).wkt)
+        for db in result]
+    return result_list
+
+
+POINT_DAM_DATA_MAP_LIST = (
+    ('US National Inventory of Dams', {
+        'database_url': USNID_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(USNID_URL)),
+        'parse_function': usnid_parse,
+    }),
+    ('GRAND', {
+        'database_url': GRAND_VERSION_1_1_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, 'GRanD_Version_1_1/GRanD_dams_v1_1.shp'),
-        'database_key': 'GRAND_ID',
-    }
-}
+        'parse_function': parse_shapefile('GRAND_ID', 'DAM_NAME'),
+    }),
+)
+
 
 VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_bounding_box_db.db')
@@ -112,7 +188,7 @@ def render_summary():
             'summary.html', **{
                 'unvalidated_count': unvalidated_count,
                 'total_count': total_count,
-                'database_dict': POINT_DAM_DATA_MAP,
+                'database_dict': POINT_DAM_DATA_MAP_LIST,
                 'user_contribution_list': user_contribution_list,
             })
     except:
@@ -191,7 +267,6 @@ def process_point(point_id):
         return str(e)
 
 
-
 @APP.route('/update_username', methods=['POST'])
 def update_username():
     try:
@@ -233,13 +308,14 @@ def update_dam_data():
 
 
 def build_base_validation_db(
-        database_info_map, target_database_path, complete_token_path):
+        database_info_map_list, target_database_path, complete_token_path):
     """Build the base database for validation.
 
     Parameters:
         task_graph (TaskGraph): to avoid re-downloads and extractions of the
             database.
-        database_info_map: map of "database id"s to 'database_url', and
+        database_info_map_list: list of map of (database id/database map)
+            tuples to 'database_url', 'database_key', 'description_key'
             'database_expected_path' locations.
         list of (vector_path, key) pairs
             that should be ingested into the target database. the
@@ -264,6 +340,7 @@ def build_base_validation_db(
         CREATE TABLE IF NOT EXISTS base_table (
             database_id TEXT NOT NULL,
             source_key TEXT NOT NULL,
+            description TEXT NOT NULL,
             source_point_wkt TEXT NOT NULL,
             key INTEGER NOT NULL PRIMARY KEY
         );
@@ -289,7 +366,7 @@ def build_base_validation_db(
             cursor.executescript(sql_create_projects_table)
 
             next_feature_id = 0
-            for database_id, database_map in database_info_map.items():
+            for database_id, database_map in database_info_map_list:
                 # fetch the database and unzip it
                 target_path = os.path.join(
                     WORKSPACE_DIR,
@@ -297,15 +374,14 @@ def build_base_validation_db(
                 token_file = f'{target_path}.UNZIPPED'
                 download_and_unzip(
                     database_map['database_url'], target_path, token_file)
-                vector = gdal.OpenEx(
-                    database_map['database_expected_path'], gdal.OF_VECTOR)
-                layer = vector.GetLayer()
-                for feature in layer:
-                    geom = feature.GetGeometryRef()
-                    key_val = feature.GetField(database_map['database_key'])
+                dam_data_list = database_map['parse_function'](
+                    database_map['database_expected_path'])
+                for base_db_key, description, geom_wkt in dam_data_list:
                     cursor.execute(
-                        'INSERT OR IGNORE INTO base_table VALUES (?, ?, ?, ?)',
-                        (database_id, key_val, geom.ExportToWkt(), next_feature_id))
+                        'INSERT OR IGNORE INTO base_table '
+                        'VALUES (?, ?, ?, ?, ?)',
+                        (database_id, base_db_key, description,
+                         geom_wkt, next_feature_id))
                     next_feature_id += 1
 
     with open(complete_token_path, 'w') as token_file:
@@ -314,9 +390,11 @@ def build_base_validation_db(
 
 def download_and_unzip(url, target_path, token_file):
     """Download url to target and write a token file when it unzips."""
-    reproduce.utils.url_fetch_and_validate(url, target_path)
-    with zipfile.ZipFile(target_path, 'r') as zip_ref:
-        zip_ref.extractall(os.path.dirname(target_path))
+    if not os.path.exists(target_path):
+        reproduce.utils.url_fetch_and_validate(url, target_path)
+        if target_path.endswith('zip'):
+            with zipfile.ZipFile(target_path, 'r') as zip_ref:
+                zip_ref.extractall(os.path.dirname(target_path))
 
 
 if __name__ == '__main__':
@@ -328,10 +406,10 @@ if __name__ == '__main__':
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
     expected_database_path_list = [
         db_map['database_expected_path']
-        for db_map in POINT_DAM_DATA_MAP.values()]
+        for _, db_map in POINT_DAM_DATA_MAP_LIST]
     TASK_GRAPH.add_task(
         func=build_base_validation_db,
-        args=(POINT_DAM_DATA_MAP, DATABASE_PATH, complete_token_path),
+        args=(POINT_DAM_DATA_MAP_LIST, DATABASE_PATH, complete_token_path),
         target_path_list=[complete_token_path],
         ignore_path_list=expected_database_path_list,
         task_name='build the dam database')
