@@ -102,8 +102,15 @@ def usnid_parse(db_path):
         for db in result]
     return result_list
 
+VOLTA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/VoltaReservoirs_V1_md5_d756671c6c2cc42d34b5dfa1aa3e9395.zip'
 
 POINT_DAM_DATA_MAP_LIST = (
+    ('Volta', {
+        'database_url': VOLTA_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, 'VoltaReservoirs_V1.shp'),
+        'parse_function': parse_shapefile('KCL_ID', 'KCL_ID'),
+    }),
     ('US National Inventory of Dams', {
         'database_url': USNID_URL,
         'database_expected_path': os.path.join(
