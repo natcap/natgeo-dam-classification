@@ -190,10 +190,9 @@ POINT_DAM_DATA_MAP_LIST = (
     ('MYANMAR_DAMS_URL', {
         'database_url': MYANMAR_DAMS_URL,
         'database_expected_path': os.path.join(
-            WORKSPACE_DIR, os.path.basename(
-                MYANMAR_DAMS_URL)),
+            WORKSPACE_DIR, 'myanmar_dams.shp'),
         'parse_function': parse_shapefile(
-            ' Project ID', 'Project Na', ('Status', ('Complete',)))
+            'Project ID', 'Project Na', ('Status', ('Complete',)))
     }),
     ('Mekong dam database from Rafa', {
         'database_url': MEKONG_DAM_DATABASE_FROM_RAFA_URL,
