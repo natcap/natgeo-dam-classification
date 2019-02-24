@@ -89,8 +89,9 @@ def parse_shapefile(db_key, description_key, filter_tuple):
     return _parse_shapefile
 
 
-def parse_csv(
-        db_key, description_key, lat_lng_key_tuple, filter_tuple, encoding):
+def parse_pandas(
+        db_key, description_key, lat_lng_key_tuple, filter_tuple, encoding,
+        pandas_type):
     """Create closure to extract db key, description, and geom from base path.
 
     Parameters:
@@ -101,13 +102,14 @@ def parse_csv(
         lat_lng_key_tuple (tuple): the string keys for lat/lng identification
         filter_tuple (tuple): tuple of 'ID' to filter on, then a tuple of
             strings to match.
+        pandas_type (str): either 'csv' for 'xlsx' for parsing.
 
     Returns:
         a list of (base_db_key, description, geom) tuples from the data in
         this database.
 
     """
-    def _parse_csv(base_path):
+    def _parse_pandas(base_path):
         """Extract db key, description, and geom from base path.
 
         Parameters:
@@ -120,7 +122,11 @@ def parse_csv(
 
         """
         result_list = []
-        df = pandas.read_csv(base_path, encoding=encoding)
+        if pandas_type == 'csv':
+            df = pandas.read_csv(base_path, encoding=encoding)
+        elif pandas_type == 'xlsx':
+            df = pandas.read_excel(base_path)
+
         # filter out everything that's not at least hydropower
         df = df.dropna(subset=[
             filter_tuple[0], lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
@@ -146,7 +152,7 @@ def parse_csv(
             for index, db in enumerate(result)]
         return result_list
         return result_list
-    return _parse_csv
+    return _parse_pandas
 
 
 def usnid_parse(db_path):
@@ -178,15 +184,26 @@ def usnid_parse(db_path):
 VOLTA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/VoltaReservoirs_V1_md5_d756671c6c2cc42d34b5dfa1aa3e9395.zip'
 GREATER_MEKONG_HYDROPOWER_DATABASE_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/greater_mekong_hydropower_dams_md5_c94ef3dab1171018ac2c7a1831fe0cc1.csv'
 
+MEKONG_DAM_DATABASE_FROM_RAFA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/MekongDamDatabasefromRafa_cleaned_by_rps_md5_e9852db07e734884107ace82ef1c9c96.xlsx'
+
 POINT_DAM_DATA_MAP_LIST = (
+    ('Mekong dam database from Rafa', {
+        'database_url': MEKONG_DAM_DATABASE_FROM_RAFA_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(
+                MEKONG_DAM_DATABASE_FROM_RAFA_URL)),
+        'parse_function': parse_pandas(
+            'Code', 'Name', ('Lon1', 'Lat1'),
+            ('Status', ('C',)), None, 'xlsx')
+    }),
     ('Greater Mekong Hydropower Database', {
         'database_url': GREATER_MEKONG_HYDROPOWER_DATABASE_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, os.path.basename(
                 GREATER_MEKONG_HYDROPOWER_DATABASE_URL)),
-        'parse_function': parse_csv(
+        'parse_function': parse_pandas(
             None, 'Project name', ('Long', 'Lat'),
-            ('Status', ('COMM', 'OP')), 'latin1'),
+            ('Status', ('COMM', 'OP')), 'latin1', 'csv'),
     }),
     ('Volta', {
         'database_url': VOLTA_URL,
@@ -199,7 +216,10 @@ POINT_DAM_DATA_MAP_LIST = (
         'database_url': USNID_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, os.path.basename(USNID_URL)),
-        'parse_function': usnid_parse,
+        'parse_function': parse_pandas(
+            'NIDID', 'DAM_NAME', ('LONGITUDE', 'LATITUDE'),
+            ('PURPOSES', ('H',)), None, 'xlsx')
+
     }),
     ('GRAND', {
         'database_url': GRAND_VERSION_1_1_URL,
