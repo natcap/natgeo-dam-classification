@@ -183,10 +183,18 @@ def usnid_parse(db_path):
 
 VOLTA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/VoltaReservoirs_V1_md5_d756671c6c2cc42d34b5dfa1aa3e9395.zip'
 GREATER_MEKONG_HYDROPOWER_DATABASE_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/greater_mekong_hydropower_dams_md5_c94ef3dab1171018ac2c7a1831fe0cc1.csv'
-
 MEKONG_DAM_DATABASE_FROM_RAFA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/MekongDamDatabasefromRafa_cleaned_by_rps_md5_e9852db07e734884107ace82ef1c9c96.xlsx'
+MYANMAR_DAMS_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/myanmar_dams_md5_4a5e49a515d30ac0937c2a36b43dcdf8.zip'
 
 POINT_DAM_DATA_MAP_LIST = (
+    ('MYANMAR_DAMS_URL', {
+        'database_url': MYANMAR_DAMS_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(
+                MYANMAR_DAMS_URL)),
+        'parse_function': parse_shapefile(
+            ' Project ID', 'Project Na', ('Status', ('Complete',)))
+    }),
     ('Mekong dam database from Rafa', {
         'database_url': MEKONG_DAM_DATABASE_FROM_RAFA_URL,
         'database_expected_path': os.path.join(
