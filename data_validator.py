@@ -35,9 +35,6 @@ LOGGER.debug(APP.config['SECRET_KEY'])
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
 WORKSPACE_DIR = 'workspace'
 
-GRAND_VERSION_1_1_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip'
-USNID_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/NID2018_U_2019_02_10_md5_305b5bf747c95653725fecfee94bddf5.xlsx'
-
 
 def parse_shapefile(db_key, description_key, filter_tuple):
     """Create closure to xtract db key, description, and geom from base path.
@@ -76,9 +73,6 @@ def parse_shapefile(db_key, description_key, filter_tuple):
                 filter_text = feature.GetField(filter_tuple[0])
                 for filter_rule in filter_tuple[1]:
                     if filter_rule == filter_text:
-                        # skip because it matches
-                        LOGGER.debug(
-                            'skipping %s', feature.GetField(description_key))
                         continue
             result_list.append((
                 feature.GetFID if db_key is None else feature.GetField(db_key),
@@ -128,10 +122,13 @@ def parse_pandas(
             df = pandas.read_excel(base_path)
 
         # filter out everything that's not at least hydropower
-        df = df.dropna(subset=[
-            filter_tuple[0], lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
-        filtered_df = df[df[filter_tuple[0]].str.contains('|'.join(
-            filter_tuple[1]))]
+        if filter_tuple is not None:
+            df = df.dropna(subset=[
+                filter_tuple[0], lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
+            filtered_df = df[df[filter_tuple[0]].str.contains('|'.join(
+                filter_tuple[1]))]
+        else:
+            filtered_df = df
         if db_key is None:
             result = filtered_df[
                 [description_key, lat_lng_key_tuple[0],
@@ -155,45 +152,36 @@ def parse_pandas(
     return _parse_pandas
 
 
-def usnid_parse(db_path):
-    """Extract db key, description, and geom from USNID .
-
-    Parameters:
-        base_path (str): path to a database, may be gdal vector, excel, or
-            more.
-
-    Returns:
-        a list of (base_db_key, description, geom) tuples from the data in
-        this database.
-
-    """
-    nid_df = pandas.read_excel(db_path)
-    # filter out everything that's not at least hydropower
-    nid_df = nid_df.dropna(subset=['PURPOSES'])
-    filtered_nid_df = nid_df[nid_df['PURPOSES'].str.contains('H')]
-    result = filtered_nid_df[
-        ['NIDID', 'DAM_NAME', 'LONGITUDE', 'LATITUDE']].to_dict('records')
-    # convert to result list and make wkt points
-    result_list = [
-        (db['NIDID'], db['DAM_NAME'],
-         shapely.geometry.Point(db['LONGITUDE'], db['LATITUDE']).wkt)
-        for db in result]
-    return result_list
-
-
+GRAND_VERSION_1_1_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip'
+USNID_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/NID2018_U_2019_02_10_md5_305b5bf747c95653725fecfee94bddf5.xlsx'
 VOLTA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/VoltaReservoirs_V1_md5_d756671c6c2cc42d34b5dfa1aa3e9395.zip'
 GREATER_MEKONG_HYDROPOWER_DATABASE_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/greater_mekong_hydropower_dams_md5_c94ef3dab1171018ac2c7a1831fe0cc1.csv'
 MEKONG_DAM_DATABASE_FROM_RAFA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/MekongDamDatabasefromRafa_cleaned_by_rps_md5_e9852db07e734884107ace82ef1c9c96.xlsx'
 MYANMAR_DAMS_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/myanmar_dams_md5_4a5e49a515d30ac0937c2a36b43dcdf8.zip'
+UHE_AMAZONIA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/Base-UHE-AMAZONIA_md5_accd10ef136bc16d1e235e084c706e1e.csv'
 
 POINT_DAM_DATA_MAP_LIST = (
-    ('MYANMAR_DAMS_URL', {
+     ('GRAND', {
+        'database_url': GRAND_VERSION_1_1_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, 'GRanD_Version_1_1/GRanD_dams_v1_1.shp'),
+        'parse_function': parse_shapefile(
+            'GRAND_ID', 'DAM_NAME', None),
+        }),
+    ('UHE Amazonia', {
+        'database_url': UHE_AMAZONIA_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(UHE_AMAZONIA_URL)),
+        'parse_function': parse_pandas(
+            None, 'HYDRO_NAME', ('LON', 'LAT'), None, 'latin1', 'csv')
+        }),
+    ('Myanmar Dams', {
         'database_url': MYANMAR_DAMS_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, 'myanmar_dams.shp'),
         'parse_function': parse_shapefile(
             'Project ID', 'Project Na', ('Status', ('Complete',)))
-    }),
+        }),
     ('Mekong dam database from Rafa', {
         'database_url': MEKONG_DAM_DATABASE_FROM_RAFA_URL,
         'database_expected_path': os.path.join(
@@ -202,7 +190,7 @@ POINT_DAM_DATA_MAP_LIST = (
         'parse_function': parse_pandas(
             'Code', 'Name', ('Lon1', 'Lat1'),
             ('Status', ('C',)), None, 'xlsx')
-    }),
+        }),
     ('Greater Mekong Hydropower Database', {
         'database_url': GREATER_MEKONG_HYDROPOWER_DATABASE_URL,
         'database_expected_path': os.path.join(
@@ -211,14 +199,14 @@ POINT_DAM_DATA_MAP_LIST = (
         'parse_function': parse_pandas(
             None, 'Project name', ('Long', 'Lat'),
             ('Status', ('COMM', 'OP')), 'latin1', 'csv'),
-    }),
+        }),
     ('Volta', {
         'database_url': VOLTA_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, 'VoltaReservoirs_V1.shp'),
         'parse_function': parse_shapefile(
             'KCL_ID', 'KCL_ID', None),
-    }),
+        }),
     ('US National Inventory of Dams', {
         'database_url': USNID_URL,
         'database_expected_path': os.path.join(
@@ -226,17 +214,8 @@ POINT_DAM_DATA_MAP_LIST = (
         'parse_function': parse_pandas(
             'NIDID', 'DAM_NAME', ('LONGITUDE', 'LATITUDE'),
             ('PURPOSES', ('H',)), None, 'xlsx')
-
-    }),
-    ('GRAND', {
-        'database_url': GRAND_VERSION_1_1_URL,
-        'database_expected_path': os.path.join(
-            WORKSPACE_DIR, 'GRanD_Version_1_1/GRanD_dams_v1_1.shp'),
-        'parse_function': parse_shapefile(
-            'GRAND_ID', 'DAM_NAME', None),
     }),
 )
-
 
 VALIDATION_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'dam_bounding_box_db.db')
@@ -490,6 +469,7 @@ def build_base_validation_db(
             next_feature_id = 0
             for database_id, database_map in database_info_map_list:
                 # fetch the database and unzip it
+                LOGGER.info('processing %s', database_id)
                 target_path = os.path.join(
                     WORKSPACE_DIR,
                     os.path.basename(database_map['database_url']))
