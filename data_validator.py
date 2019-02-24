@@ -1,4 +1,5 @@
 """Flask app to validata imagery and point locations."""
+import re
 import zipfile
 import json
 import datetime
@@ -38,13 +39,16 @@ GRAND_VERSION_1_1_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecosha
 USNID_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/NID2018_U_2019_02_10_md5_305b5bf747c95653725fecfee94bddf5.xlsx'
 
 
-def parse_shapefile(db_key, description_key):
+def parse_shapefile(db_key, description_key, filter_tuple):
     """Create closure to xtract db key, description, and geom from base path.
 
     Parameters:
         db_key (str): field that identifies the unique key in this database
+            if None, will use FID
         description_key (str): field that identifies the dam description in
             this database
+        filter_tuple (tuple): tuple of 'ID' to filter on, then a tuple of
+            strings to match.
 
     Returns:
         a list of (base_db_key, description, geom) tuples from the data in
@@ -68,13 +72,81 @@ def parse_shapefile(db_key, description_key):
         layer = vector.GetLayer()
         for feature in layer:
             geom = feature.GetGeometryRef()
+            if filter_tuple is not None:
+                filter_text = feature.GetField(filter_tuple[0])
+                for filter_rule in filter_tuple[1]:
+                    if filter_rule == filter_text:
+                        # skip because it matches
+                        LOGGER.debug(
+                            'skipping %s', feature.GetField(description_key))
+                        continue
             result_list.append((
-                feature.GetField(db_key),
+                feature.GetFID if db_key is None else feature.GetField(db_key),
                 feature.GetField(description_key),
                 geom.ExportToWkt()))
 
         return result_list
     return _parse_shapefile
+
+
+def parse_csv(
+        db_key, description_key, lat_lng_key_tuple, filter_tuple, encoding):
+    """Create closure to extract db key, description, and geom from base path.
+
+    Parameters:
+        db_key (str): field that identifies the unique key in this database
+            if None, will use FID
+        description_key (str): field that identifies the dam description in
+            this database
+        lat_lng_key_tuple (tuple): the string keys for lat/lng identification
+        filter_tuple (tuple): tuple of 'ID' to filter on, then a tuple of
+            strings to match.
+
+    Returns:
+        a list of (base_db_key, description, geom) tuples from the data in
+        this database.
+
+    """
+    def _parse_csv(base_path):
+        """Extract db key, description, and geom from base path.
+
+        Parameters:
+            base_path (str): path to a database, may be gdal vector, excel, or
+                more.
+
+        Returns:
+            a list of (base_db_key, description, geom) tuples from the data in
+            this database.
+
+        """
+        result_list = []
+        df = pandas.read_csv(base_path, encoding=encoding)
+        # filter out everything that's not at least hydropower
+        df = df.dropna(subset=[
+            filter_tuple[0], lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
+        filtered_df = df[df[filter_tuple[0]].str.contains('|'.join(
+            filter_tuple[1]))]
+        if db_key is None:
+            result = filtered_df[
+                [description_key, lat_lng_key_tuple[0],
+                 lat_lng_key_tuple[1]]].to_dict('records')
+        else:
+            result = filtered_df[
+                [db_key, description_key, lat_lng_key_tuple[0],
+                 lat_lng_key_tuple[1]]].to_dict(
+                    'records')
+
+        # convert to result list and make wkt points
+        result_list = [
+            (index if db_key is None else db[db_key],
+             db[description_key],
+             shapely.geometry.Point(
+                float(re.findall(r'\d+\.\d+', str(db[lat_lng_key_tuple[0]]))[0]),
+                float(re.findall(r'\d+\.\d+', str(db[lat_lng_key_tuple[1]]))[0])).wkt)
+            for index, db in enumerate(result)]
+        return result_list
+        return result_list
+    return _parse_csv
 
 
 def usnid_parse(db_path):
@@ -102,14 +174,26 @@ def usnid_parse(db_path):
         for db in result]
     return result_list
 
+
 VOLTA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/VoltaReservoirs_V1_md5_d756671c6c2cc42d34b5dfa1aa3e9395.zip'
+GREATER_MEKONG_HYDROPOWER_DATABASE_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/greater_mekong_hydropower_dams_md5_c94ef3dab1171018ac2c7a1831fe0cc1.csv'
 
 POINT_DAM_DATA_MAP_LIST = (
+    ('Greater Mekong Hydropower Database', {
+        'database_url': GREATER_MEKONG_HYDROPOWER_DATABASE_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(
+                GREATER_MEKONG_HYDROPOWER_DATABASE_URL)),
+        'parse_function': parse_csv(
+            None, 'Project name', ('Long', 'Lat'),
+            ('Status', ('COMM', 'OP')), 'latin1'),
+    }),
     ('Volta', {
         'database_url': VOLTA_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, 'VoltaReservoirs_V1.shp'),
-        'parse_function': parse_shapefile('KCL_ID', 'KCL_ID'),
+        'parse_function': parse_shapefile(
+            'KCL_ID', 'KCL_ID', None),
     }),
     ('US National Inventory of Dams', {
         'database_url': USNID_URL,
@@ -121,7 +205,8 @@ POINT_DAM_DATA_MAP_LIST = (
         'database_url': GRAND_VERSION_1_1_URL,
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, 'GRanD_Version_1_1/GRanD_dams_v1_1.shp'),
-        'parse_function': parse_shapefile('GRAND_ID', 'DAM_NAME'),
+        'parse_function': parse_shapefile(
+            'GRAND_ID', 'DAM_NAME', None),
     }),
 )
 
