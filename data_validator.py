@@ -286,7 +286,7 @@ def render_summary():
             'summary.html', **{
                 'unvalidated_count': unvalidated_count,
                 'total_count': total_count,
-                'database_dict': POINT_DAM_DATA_MAP_LIST,
+                'database_list': POINT_DAM_DATA_MAP_LIST,
                 'user_contribution_list': user_contribution_list,
             })
     except:

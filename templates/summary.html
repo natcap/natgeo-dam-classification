@@ -37,7 +37,7 @@
 
 <h2>Databases Used</h2>
 <dl>
-    {% for database_id, database_info in database_dict.items() %}
+    {% for database_id, database_info in database_list %}
         <dt>{{ database_id }}</dt>
         <dd><a href="{{ database_info.database_url }}">{{ database_info.database_url }}</a></dd>
     {% endfor %}
