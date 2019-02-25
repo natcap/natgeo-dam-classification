@@ -258,6 +258,7 @@ def get_unvalidated_point():
         LOGGER.exception('exception in unvalidated')
         raise
 
+# Used to highlight different user's contributions
 _KELLY_COLORS_HEX = [
     '#FFB300',  # Vivid Yellow
     '#803E75',  # Strong Purple
