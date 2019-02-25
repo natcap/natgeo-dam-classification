@@ -233,7 +233,6 @@ def favicon():
         mimetype='image/vnd.microsoft.icon')
 
 @APP.route('/')
-@APP.route('/unvalidated')
 def get_unvalidated_point():
     """Get a point that has not been validated."""
     LOGGER.debug('trying to get an unvalidated point')
