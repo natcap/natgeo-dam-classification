@@ -68,7 +68,7 @@
 </head>
 <body>
     <div id="mapid"></div>
-    <div id="mouse_tip" style="display: none;">
+    <div id="mouse_tip">
         click once to start a bounding box
     </div>
     <div id="infoBox">
@@ -159,6 +159,9 @@
     function bounding_box_move(ev) {
         movedlatlng = map.mouseEventToLatLng(ev.originalEvent);
         bounding_box.setBounds([first_click_lat_lng, movedlatlng]);
+        var diag_dist = first_click_lat_lng.distanceTo(movedlatlng);
+        $('#mouse_tip').text(
+            "Bounding box diagonal length " + diag_dist.toFixed(1) + "m");
     };
 
     map.on('click', function(ev){
@@ -173,7 +176,6 @@
             bounding_box = L.rectangle(bounds, {color: "#CCAAAA", weight: 1});
             map.on('mousemove', bounding_box_move);
             bounding_box.addTo(map);
-            $('#mouse_tip').hide();
         } else {
             map.off('mousemove', bounding_box_move);
             bounding_box.setStyle({color: "#22ff22", weight: 3});
@@ -246,15 +248,10 @@
     {% endif %}
 
     $(document).bind('mousemove', function(e){
-        if (!clicked && !bounding_box && mouse_in_map) {
-            $('#mouse_tip').css({
-                'left':  e.pageX + 5,
-                'top':   e.pageY - 55,
-            }).show();
-        };
-        if (!clicked && !mouse_in_map) {
-            $('#mouse_tip').hide();
-        }
+        $('#mouse_tip').css({
+            'left':  e.pageX + 5,
+            'top':   e.pageY - 55,
+        });
     });
 
     $('a#nextpoint').click(function (e) {
