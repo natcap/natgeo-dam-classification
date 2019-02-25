@@ -1,7 +1,6 @@
 <!doctype html>
 <html>
 <head>
-<link rel="stylesheet" href="css/w3.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css"
    integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA=="
    crossorigin=""/>
@@ -24,16 +23,27 @@
   } );
 </script>
 <style type="text/css">
-    #infoBox {
-        margin: auto;
-        margin-bottom: 10px;
-        width: 500px;
-        font-size: small;
+    html, body, #mapid {
+        height: 100%;
+        width: 100%;
+        font-family: Roboto, Arial, sans-serif;
+        color: rgb(51, 51, 51);
+        font-size: 15px;
+        font-weight: 400;
     }
-    #mapid {
-        margin: auto;
-        width: 650px;
-        height: 500px;
+    #infoBox {
+        position: fixed;
+        top: 1em;
+        right: 1em;
+        font-size: small;
+        z-index: 1000;
+        background: rgba(255, 255, 255, 1);
+        border-style: solid;
+        border-width: 0.8px;
+        border-radius: 2px;
+        box-shadow: rgba(0, 0, 0, 0.2) 4px 4px 4px 4px, rgba(0, 0, 0, 0.02) -1px -1px -1px -1px;
+        box-sizing: border-box;
+        padding: 5px;
     }
     #mouse_tip {
         position: absolute;
@@ -54,18 +64,26 @@
 <title>NatGeo Dam Validator</title>
 </head>
 <body>
-<h1><img src="images/natcap.png"/> & NatGeo Dam Location Validation</h1>
-<hr>
-<table class='grid-table'>
-    <tr>
-    <td>
-    <div id="mapid" class="column"></div>
-    </td>
-    <td>
+    <div id="mapid"></div>
+    <div id="mouse_tip" style="display: none;">
+        click once to start a bounding box
+    </div>
     <div id="infoBox">
-        <h2>{{ dam_description }}<br/>{{ base_point_id }}</h2>
-        <p><strong>Original Point Location</strong>
-            LatLng({{ '%.6f' % base_point_geom.y }} {{ '%.6f' % base_point_geom.x }})</p>
+        <span><strong>
+            <img src="images/natcap.png"/> & NatGeo Dam Location Validation
+        </strong></span>
+        <hr>
+        <p>
+            Dam Description: <strong>{{ dam_description }}</strong><br/>
+            Original database id: <strong>{{ base_point_id }}</strong></p>
+        <p>Original Point Location:
+        <br/>
+        <a href="https://www.google.com/maps/@?api=1&map_action=map&center={{base_point_geom.y}},{{base_point_geom.x}}&basemap=satellite" target="_blank">
+            <strong>
+                Lat, Lng: {{ '%.6f' % base_point_geom.y }},{{ '%.6f' % base_point_geom.x }}
+            </strong>
+        </a>
+        </p>
         <fieldset>
             <legend>Data Entry</legend>
             <textarea
@@ -88,14 +106,8 @@
                 onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea><br/>
             <a id='nextpoint' class="ui-button ui-widget ui-corner-all" href="/unvalidated">Submit/Go To Next Dam</a>
         </fieldset>
+        <center><a href="summary">See Validation Summary Stats</a></center>
     </div>
-    </td>
-</tr>
-</table>
-<center><a href="summary">See Validation Summary Stats</a></center>
-<div id="mouse_tip" style="display: none;">
-    click once to start a bounding box
-</div>
 </body>
 <script type="text/javascript">
     var position = {

@@ -144,8 +144,8 @@ def parse_pandas(
             (index if db_key is None else db[db_key],
              db[description_key],
              shapely.geometry.Point(
-                float(re.findall(r'\d+\.\d+', str(db[lat_lng_key_tuple[0]]))[0]),
-                float(re.findall(r'\d+\.\d+', str(db[lat_lng_key_tuple[1]]))[0])).wkt)
+                float(re.findall(r'-?\d+\.\d+', str(db[lat_lng_key_tuple[0]]))[0]),
+                float(re.findall(r'-?\d+\.\d+', str(db[lat_lng_key_tuple[1]]))[0])).wkt)
             for index, db in enumerate(result)]
         return result_list
         return result_list
@@ -513,6 +513,6 @@ if __name__ == '__main__':
         func=build_base_validation_db,
         args=(POINT_DAM_DATA_MAP_LIST, DATABASE_PATH, complete_token_path),
         target_path_list=[complete_token_path],
-        ignore_path_list=expected_database_path_list,
+        ignore_path_list=expected_database_path_list+[DATABASE_PATH],
         task_name='build the dam database')
     APP.run(host='0.0.0.0', port=8080)
