@@ -107,7 +107,7 @@
                 rows="1", cols="40",
                 onfocus="if(this.value=='{{ default_comments_text }}')this.value='';"
                 onblur="if(this.value=='')this.value='{{ default_comments_text }}';">{{ stored_comments_text }}</textarea><br/>
-            <a id='nextpoint' class="ui-button ui-widget ui-corner-all" href="/">Submit/Go To Next Dam</a>
+            <button id='nextpoint' class="ui-button ui-widget ui-corner-all" >Submit/Go To Next Dam</button>
         </fieldset>
         <center><a href="summary" target="_blank">See Validation Summary Stats</a></center>
     </div>
@@ -214,6 +214,9 @@
                 console.log(request.responseText);
                 console.log(status);
                 console.log(error);
+            },
+            success: function () {
+                location.reload();
             }
         });
     };
@@ -256,7 +259,7 @@
         });
     });
 
-    $('a#nextpoint').click(function (e) {
+    $('#nextpoint').click(function (e) {
         post_to_server(e);
     });
 
