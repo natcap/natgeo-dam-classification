@@ -207,7 +207,10 @@
             type: 'POST',
             contentType: 'application/json;charset=UTF-8',
             dataType: 'json',
-            data: JSON.stringify(payload)
+            data: JSON.stringify(payload),
+            error: function (request, status, error) {
+                alert(request.responseText);
+            }
         });
     };
 
