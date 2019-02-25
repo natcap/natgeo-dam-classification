@@ -304,16 +304,24 @@ def render_summary():
                     'FROM validation_table '
                     'GROUP by username '
                     'ORDER BY count(username) DESC')
-                user_contribution_list = zip(
-                    _KELLY_COLORS_HEX, cursor.fetchall())
-                cursor.execute(
-                    'SELECT source_point_wkt '
-                    'FROM base_table '
-                    'WHERE key in (SELECT key from validation_table)')
-                point_list = [
-                    shapely.wkt.loads(wkt[0]) for wkt in cursor]
-                valid_point_list = [
-                    (point.y, point.x) for point in point_list]
+                user_contribution_list = []
+                user_color_point_list = []
+                for user_color, (username, user_count) in zip(
+                        _KELLY_COLORS_HEX, cursor.fetchall()):
+                    cursor.execute(
+                        'SELECT source_point_wkt '
+                        'FROM base_table '
+                        'WHERE key in ('
+                        'SELECT key from validation_table '
+                        'WHERE username = ?)', (username,))
+                    user_point_list = [
+                        shapely.wkt.loads(wkt[0]) for wkt in cursor]
+                    user_valid_point_list = [
+                        (point.y, point.x) for point in user_point_list]
+                    user_color_point_list.append(
+                        (user_color, user_valid_point_list))
+                    user_contribution_list.append(
+                        (user_color, (username, user_count)))
 
         return flask.render_template(
             'summary.html', **{
@@ -321,7 +329,7 @@ def render_summary():
                 'total_count': total_count,
                 'database_list': POINT_DAM_DATA_MAP_LIST,
                 'user_contribution_list': user_contribution_list,
-                'valid_point_list': valid_point_list
+                'user_color_point_list': user_color_point_list
             })
     except:
         LOGGER.exception('exception render_summary')

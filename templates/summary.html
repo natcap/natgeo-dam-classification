@@ -92,14 +92,16 @@
     map.fitWorld();
 
     var valid_point_array = [];
-    {% for lat,lng in valid_point_list %}
-        valid_point_array.push(
-            L.circleMarker(
-                L.latLng({{ lat }},{{ lng }}),
-                {
-                    'radius': 1,
-                    'color': '#0FF',
-                }));
+    {% for user_color, point_list in user_color_point_list %}
+        {% for lat,lng in point_list %}
+            valid_point_array.push(
+                L.circleMarker(
+                    L.latLng({{ lat }},{{ lng }}),
+                    {
+                        'radius': 1,
+                        'color': '{{ user_color }}',
+                    }));
+        {% endfor %}
     {% endfor %}
     var group = L.featureGroup(valid_point_array).addTo(map);
 </script>
