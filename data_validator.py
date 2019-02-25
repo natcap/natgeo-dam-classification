@@ -450,6 +450,15 @@ def update_dam_data():
         return flask.jsonify(success=False)
 
 
+@APP.after_request
+def add_header(r):
+    """Force no caching."""
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, public, max-age=0"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    return r
+
+
 def build_base_validation_db(
         database_info_map_list, target_database_path, complete_token_path):
     """Build the base database for validation.
