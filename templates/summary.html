@@ -89,5 +89,17 @@
             type:'satellite'
     }).addTo(map);
     map.fitWorld();
+
+    var valid_point_array = [];
+    {% for lat,lng in valid_point_list %}
+        valid_point_array.push(
+            L.circleMarker(
+                L.latLng({{ lat }},{{ lng }}),
+                {
+                    'radius': 1,
+                    'color': '#0FF',
+                }));
+    {% endfor %}
+    var group = L.featureGroup(valid_point_array).addTo(map);
 </script>
 </html>

@@ -282,12 +282,22 @@ def render_summary():
                     'ORDER BY count(username) DESC')
                 user_contribution_list = cursor.fetchall()
 
+                cursor.execute(
+                    'SELECT source_point_wkt '
+                    'FROM base_table '
+                    'WHERE key in (SELECT key from validation_table)')
+                point_list = [
+                    shapely.wkt.loads(wkt[0]) for wkt in cursor]
+                valid_point_list = [
+                    (point.y, point.x) for point in point_list]
+
         return flask.render_template(
             'summary.html', **{
                 'unvalidated_count': unvalidated_count,
                 'total_count': total_count,
                 'database_list': POINT_DAM_DATA_MAP_LIST,
                 'user_contribution_list': user_contribution_list,
+                'valid_point_list': valid_point_list
             })
     except:
         LOGGER.exception('exception render_summary')
