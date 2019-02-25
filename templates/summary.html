@@ -67,8 +67,9 @@
     <h2>Top contributors</h2>
     <table>
         <tr><th>Username</th><th>Dams Processed</th></tr>
-        {% for username, count in user_contribution_list %}
-        <tr><td>{{ username }}</td><td>{{ count }}</td></tr>
+        {% for user_color, (username, count) in user_contribution_list %}
+        <tr><td style="color:{{ user_color}};font-weight:bold;">
+            {{ username }}</td><td>{{ count }}</td></tr>
         {% endfor %}
     </table>
 
