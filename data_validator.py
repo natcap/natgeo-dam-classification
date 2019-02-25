@@ -444,11 +444,10 @@ def update_dam_data():
                      json.dumps(payload['metadata']),
                      flask.session['username'],
                      str(datetime.datetime.utcnow())))
-        LOGGER.debug('move marker')
-        return 'good'
+        return flask.jsonify(success=True)
     except:
         LOGGER.exception("big error")
-        return 'error'
+        return flask.jsonify(success=False)
 
 
 def build_base_validation_db(
