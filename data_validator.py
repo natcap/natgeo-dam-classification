@@ -84,8 +84,8 @@ def parse_shapefile(db_key, description_key, filter_tuple):
 
 
 def parse_pandas(
-        db_key, description_key, lat_lng_key_tuple, filter_tuple, encoding,
-        pandas_type):
+        db_key, description_key, lat_lng_key_tuple, include_filter_tuple,
+        exclude_filter_tuple, encoding, pandas_type):
     """Create closure to extract db key, description, and geom from base path.
 
     Parameters:
@@ -94,8 +94,10 @@ def parse_pandas(
         description_key (str): field that identifies the dam description in
             this database
         lat_lng_key_tuple (tuple): the string keys for lat/lng identification
-        filter_tuple (tuple): tuple of 'ID' to filter on, then a tuple of
-            strings to match.
+        include_filter_tuple (tuple): tuple of 'ID' to filter on, then a tuple
+            of strings to match.
+        exclude_filter_tuple (tuple): tuple of 'ID' to filter on, then a tuple
+            of strings to match.
         pandas_type (str): either 'csv' for 'xlsx' for parsing.
 
     Returns:
@@ -122,19 +124,25 @@ def parse_pandas(
             df = pandas.read_excel(base_path)
 
         # filter out everything that's not at least hydropower
-        if filter_tuple is not None:
+        if include_filter_tuple is not None:
             df = df.dropna(subset=[
-                filter_tuple[0], lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
-            filtered_df = df[df[filter_tuple[0]].str.contains('|'.join(
-                filter_tuple[1]))]
-        else:
-            filtered_df = df
+                include_filter_tuple[0],
+                lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
+            df = df[df[include_filter_tuple[0]].str.contains('|'.join(
+                include_filter_tuple[1]))]
+
+        if exclude_filter_tuple is not None:
+            df = df.dropna(subset=[
+                exclude_filter_tuple[0],
+                lat_lng_key_tuple[0], lat_lng_key_tuple[1]])
+            df = df[~df[exclude_filter_tuple[0]].str.contains('|'.join(
+                exclude_filter_tuple[1]))]
         if db_key is None:
-            result = filtered_df[
+            result = df[
                 [description_key, lat_lng_key_tuple[0],
                  lat_lng_key_tuple[1]]].to_dict('records')
         else:
-            result = filtered_df[
+            result = df[
                 [db_key, description_key, lat_lng_key_tuple[0],
                  lat_lng_key_tuple[1]]].to_dict(
                     'records')
@@ -173,7 +181,7 @@ POINT_DAM_DATA_MAP_LIST = (
         'database_expected_path': os.path.join(
             WORKSPACE_DIR, os.path.basename(UHE_AMAZONIA_URL)),
         'parse_function': parse_pandas(
-            None, 'HYDRO_NAME', ('LON', 'LAT'), None, 'latin1', 'csv')
+            None, 'HYDRO_NAME', ('LON', 'LAT'), None, None, 'latin1', 'csv')
         }),
     ('Myanmar Dams', {
         'database_url': MYANMAR_DAMS_URL,
@@ -189,7 +197,7 @@ POINT_DAM_DATA_MAP_LIST = (
                 MEKONG_DAM_DATABASE_FROM_RAFA_URL)),
         'parse_function': parse_pandas(
             'Code', 'Name', ('Lon1', 'Lat1'),
-            ('Status', ('C',)), None, 'xlsx')
+            ('Status', ('C',)), None, None, 'xlsx')
         }),
     ('Greater Mekong Hydropower Database', {
         'database_url': GREATER_MEKONG_HYDROPOWER_DATABASE_URL,
@@ -198,7 +206,7 @@ POINT_DAM_DATA_MAP_LIST = (
                 GREATER_MEKONG_HYDROPOWER_DATABASE_URL)),
         'parse_function': parse_pandas(
             None, 'Project name', ('Long', 'Lat'),
-            ('Status', ('COMM', 'OP')), 'latin1', 'csv'),
+            ('Status', ('COMM', 'OP')), None, 'latin1', 'csv'),
         }),
     ('Volta', {
         'database_url': VOLTA_URL,
@@ -213,7 +221,7 @@ POINT_DAM_DATA_MAP_LIST = (
             WORKSPACE_DIR, os.path.basename(USNID_URL)),
         'parse_function': parse_pandas(
             'NIDID', 'DAM_NAME', ('LONGITUDE', 'LATITUDE'),
-            ('PURPOSES', ('H',)), None, 'xlsx')
+            None, ('PURPOSES', ('N', 'D')), None, 'xlsx')
     }),
 )
 
