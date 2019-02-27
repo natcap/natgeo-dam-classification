@@ -344,6 +344,32 @@ def render_summary():
         raise
 
 
+@APP.route('/user_validation_summary', methods=['GET'])
+def user_validation_summary():
+    """Dump a table of classified info."""
+    try:
+        with DB_LOCK:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                # rows validated
+                cursor.execute(
+                    'SELECT '
+                    'database_id, source_key, '
+                    'description, validation_table.key, validation_table.metadata '
+                    'FROM base_table '
+                    'INNER JOIN validation_table on  '
+                    'validation_table.key = base_table.key;')
+                key_metadata_list = list(cursor.fetchall())
+
+        return flask.render_template(
+            'user_validation_summary.html', **{
+                'key_metadata_list': key_metadata_list
+            })
+    except:
+        LOGGER.exception('exception classification_summary')
+        raise
+
+
 def flush_visited_point_id_timestamp():
     """Remove old entried in the visited unvalid map."""
     now = time.time()
@@ -428,6 +454,7 @@ def update_username():
     except:
         LOGGER.exception('error')
         return 'error'
+
 
 @APP.route('/update_dam_data', methods=['POST'])
 def update_dam_data():
