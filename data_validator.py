@@ -355,7 +355,8 @@ def user_validation_summary():
                 cursor.execute(
                     'SELECT '
                     'database_id, source_key, '
-                    'description, validation_table.key, validation_table.metadata '
+                    'description, validation_table.key, '
+                    'validation_table.metadata, validation_table.username '
                     'FROM base_table '
                     'INNER JOIN validation_table on  '
                     'validation_table.key = base_table.key;')

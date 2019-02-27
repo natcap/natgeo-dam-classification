@@ -19,17 +19,17 @@
         <table>
             <tr>
                 <th>Dam ID/Link</th><th>Validation Metadata</th></tr>
-                {% for database_id, source_key, description, key, metadata in key_metadata_list %}
+                {% for database_id, source_key, description, key, metadata, username in key_metadata_list %}
                     <tr>
                         <td>
-                            <a href="/{{ key }}">
-                                {{ database_id }}:{{ source_key }}
+                            <a href="/{{ key }}" target="_blank">
+                                {{ database_id }}:{{ source_key }}, {{ username }}
                             </a>
                         </td>
-                        <td class="json">
-                            <pre>
+                        <td>
+                            <a href="/{{ key }}" target="_blank">
                                 {{ metadata }}
-                            </pre>
+                            </a>
                         </td>
                     </tr>
                 {% endfor %}
