@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<link rel="stylesheet" href="css/w3.css">
+<style type="text/css">
+    table {
+        font-size: small;
+    }
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+<title>NatGeo User Validation Summary</title>
+</head>
+<body>
+<h1><img src="images/natcap.png"/> & NatGeo Sentinel Dam Location User Validation Summary</h1>
+<h2><a href="/">Back to validation</a></h2>
+<hr>
+        <h2>User Validation Info</h2>
+        <table>
+            <tr>
+                <th>Dam ID/Link</th><th>Validation Metadata</th></tr>
+                {% for database_id, source_key, description, key, metadata in key_metadata_list %}
+                    <tr>
+                        <td>
+                            <a href="/{{ key }}">
+                                {{ database_id }}:{{ source_key }}
+                            </a>
+                        </td>
+                        <td class="json">
+                            <pre>
+                                {{ metadata }}
+                            </pre>
+                        </td>
+                    </tr>
+                {% endfor %}
+        </table>
+</body>
+</html>
