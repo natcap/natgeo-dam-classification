@@ -1,4 +1,5 @@
 """Create a sentinel sqlite database index."""
+import json
 from lxml import etree
 import subprocess
 import time
@@ -406,10 +407,10 @@ def monitor_validation_database(validation_database_path):
                     'SELECT bounding_box_bounds, metadata, id, '
                     'base_table.database_id, base_table.source_key '
                     'FROM validation_table '
-                    'WHERE id > ?'
                     'INNER JOIN base_table on '
-                    'validation_table.key = base_table.key;', (largest_key,)):
-                (bb_bounds, metadata, validation_id,
+                    'validation_table.key = base_table.key '
+                    'WHERE id > ?;', (largest_key,)):
+                (bb_bounds_json, metadata, validation_id,
                  database_id, source_key) = payload
 
                 unique_id = f'{database_id}:{source_key}'
@@ -418,6 +419,8 @@ def monitor_validation_database(validation_database_path):
 
                 # fetch imagery list that intersects with the bounding box
                 # [minx,miny,maxx,maxy]
+                bb_bounds = json.loads(bb_bounds_json.replace("'", '"'))
+                LOGGER.debug(bb_bounds[0])
                 bounding_box = [
                     min(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
                     min(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
