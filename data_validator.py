@@ -472,13 +472,16 @@ def update_dam_data():
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
+                cursor.execute('SELECT max(id) FROM validation_table;')
+                max_validation_id = cursor.fetchone()[0]
                 cursor.execute(
                     'INSERT OR REPLACE INTO validation_table '
-                    'VALUES (?, ?, ?, ?, ?)',
+                    'VALUES (?, ?, ?, ?, ?, ?);',
                     (str(bounding_box_bounds), payload['point_id'],
                      json.dumps(payload['metadata']),
                      flask.session['username'],
-                     str(datetime.datetime.utcnow())))
+                     str(datetime.datetime.utcnow()),
+                     max_validation_id+1))
         return flask.jsonify(success=True)
     except:
         LOGGER.exception("big error")
@@ -541,11 +544,14 @@ def build_base_validation_db(
             metadata TEXT,
             username TEXT,
             time_date TEXT,
+            id INTEGER NOT NULL UNIQUE,
             FOREIGN KEY (key) REFERENCES base_table(key)
         );
 
         CREATE UNIQUE INDEX IF NOT EXISTS validation_table_index
         ON validation_table (key);
+        CREATE UNIQUE INDEX IF NOT EXISTS validation_table_id_index
+        ON validation_table (id);
         """)
     with DB_LOCK:
         with sqlite3.connect(target_database_path) as conn:

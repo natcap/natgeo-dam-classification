@@ -21,6 +21,8 @@ import shapely.wkb
 import reproduce
 import pygeoprocessing
 
+import data_validator
+
 OPENER = urllib.request.build_opener()
 OPENER.addheaders = [('User-agent', 'Mozilla/5.0')]
 urllib.request.install_opener(OPENER)
@@ -401,3 +403,44 @@ def fetch_and_unzip(
         dependent_task_list=[fetch_task],
         task_name=f'unzip {zipfile_basename}')
     return unzip_task
+
+
+def monitor_validation_database(validation_database_path):
+    """Continuously monitor the validation database.
+
+    Parameters:
+        validation_database_path (str): database to watch for unfetched
+            bounding boxes, specifically the `validation_table` table.
+
+    Returns:
+        None.
+
+    """
+    largest_key = -1
+    with sqlite3.connect(validation_database_path) as val_db_conn:
+        while True:
+            print('trying new select')
+            for bb_bounds, metadata, validation_id in val_db_conn.execute(
+                    'SELECT bounding_box_bounds, metadata, id '
+                    'FROM validation_table '
+                    'WHERE id > ?', (largest_key,)):
+                LOGGER.info('processing %d', validation_id)
+                largest_key = max(largest_key, validation_id)
+
+                # [minx,miny,maxx,maxy]
+                bounding_box = [
+                    min(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
+                    min(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
+                    max(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
+                    max(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
+                ]
+
+                # fetch imagery list that intersects with the bounding box
+                    # clip imagery to bounding box
+                    # test if it's valid (no black?)
+                    # if not, save it and record in database?
+            time.sleep(1)
+
+
+if __name__ == '__main__':
+    monitor_validation_database(data_validator.DATABASE_PATH)
