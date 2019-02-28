@@ -20,6 +20,7 @@ from osgeo import ogr
 import shapely.wkb
 import reproduce
 import pygeoprocessing
+import taskgraph
 
 import data_validator
 
@@ -27,21 +28,13 @@ OPENER = urllib.request.build_opener()
 OPENER.addheaders = [('User-agent', 'Mozilla/5.0')]
 urllib.request.install_opener(OPENER)
 
-WORKSPACE_DIR = 'workspace'
+WORKSPACE_DIR = 'workspace_imagry'
 SENTINEL_CSV_BUCKET_ID_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
 SENTINEL_CSV_GZ_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
 SENTINEL_SQLITE_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.db')
-GRAND_VECTOR_BUCKET_ID_TUPLE = (
-    'natgeo-data-bucket',
-    'GRanD_Version_1_1_md5_9ad04293d056cd35abceb8a15b953fb8.zip')
-GRAND_VECTOR_PATH = os.path.join(
-    WORKSPACE_DIR, 'GRanD_Version_1_1', 'GRanD_dams_v1_1.shp')
-COVERAGE_VECTOR_PATH = os.path.join(WORKSPACE_DIR, 'grand_coverage.gpkg')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
-
+REPORTING_INTERVAL = 5.0
 LOGGER = logging.getLogger(__name__)
-
-BB_RADIUS = 500
 
 
 def build_index(task_graph):
@@ -74,23 +67,18 @@ def build_index(task_graph):
         dependent_task_list=[download_index_task],
         task_name='unzip index csv')
 
-    _ = fetch_and_unzip(
-        task_graph, GRAND_VECTOR_BUCKET_ID_TUPLE, IAM_TOKEN_PATH,
-        WORKSPACE_DIR)
-
     task_graph.join()
 
 
-def get_bounding_box_imagery(
-        task_graph, sample_point, point_id, workspace_dir,
-        fetch_if_not_downloaded=True):
+def get_dam_bounding_box_imagery(
+        task_graph, dam_id, bounding_box, workspace_dir,
+        fetch_if_not_downloaded=False):
     """Extract bounding box of grand sentinel imagery around point.
 
     Parameters:
         task_graph (TaskGraph): taskgraph for global scheduling.
-        sample_point (shapely.Point): sample point to center bounding box.
-        point_id (string): string to uniquely identify the point for file
-            naming schemes.
+        dam_id (str): unique identifier for dam
+        bounding_box (list): [xmin, ymin, xmax, ymax] in WGS84 coords.
         workspace_dir (str): path to directory to write results into.
         fetch_if_not_downloaded (bool): if False, raises a StopIteration if
             the necessary tile has not been fetched. Otherwise downloads tile.
@@ -99,7 +87,6 @@ def get_bounding_box_imagery(
         Local file path location of image.
 
     """
-    bounding_box = sample_point.buffer(BB_RADIUS/110000.0).bounds
     with sqlite3.connect(SENTINEL_SQLITE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -142,12 +129,12 @@ def get_bounding_box_imagery(
 
             return fetch_tile_and_bound_data(
                 task_graph, [manifest_task_fetch], manifest_path,
-                url_prefix, point_id, sample_point, granule_dir)
+                url_prefix, dam_id, bounding_box, granule_dir)
 
 
 def fetch_tile_and_bound_data(
         task_graph, dependent_task_list, manifest_path, url_prefix,
-        unique_id, sample_point, target_dir):
+        unique_id, bounding_box, target_dir):
     """Fetch tile from url defined in manifest_path.
 
     Parameters:
@@ -158,8 +145,7 @@ def fetch_tile_and_bound_data(
         url_prefix (str): url to prepend to any URLs needed by this function.
         unique_id (str): this string is appended to the fetched file
             to define the clipped version by the bounding box.
-        sample_point (shapely.Point): point to center bounding box on in
-            WGS84 coordinate system.
+        bounding_box (list): [xmin, ymin, xmax, ymax]
         target_dir (str): path to directory which to download the data object.
 
     Returns:
@@ -207,15 +193,11 @@ def fetch_tile_and_bound_data(
                 time.sleep(sleep_time)
 
         granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
-
-        granule_srs = osr.SpatialReference()
-        granule_srs.ImportFromWkt(granule_raster_info['projection'])
-        wgs84_to_granule = osr.CoordinateTransformation(
-            wgs84_srs, granule_srs)
-        point = ogr.CreateGeometryFromWkt(sample_point.wkt)
-        point.Transform(wgs84_to_granule)
-        granule_point = shapely.wkt.loads(point.ExportToWkt())
-        target_bounding_box = granule_point.buffer(BB_RADIUS).bounds
+        wgs84_srs = osr.SpatialReference()
+        wgs84_srs.ImportFromEPSG(4326)
+        target_bounding_box = pygeoprocessing.transform_bounding_box(
+            bounding_box, wgs84_srs.ExportToWkt(),
+            granule_raster_info['projection'], edge_samples=11)
 
         # this will be a GeoTIFF, hence the .tif suffix
         clipped_raster_path = (
@@ -420,13 +402,21 @@ def monitor_validation_database(validation_database_path):
     with sqlite3.connect(validation_database_path) as val_db_conn:
         while True:
             print('trying new select')
-            for bb_bounds, metadata, validation_id in val_db_conn.execute(
-                    'SELECT bounding_box_bounds, metadata, id '
+            for payload in val_db_conn.execute(
+                    'SELECT bounding_box_bounds, metadata, id, '
+                    'base_table.database_id, base_table.source_key '
                     'FROM validation_table '
-                    'WHERE id > ?', (largest_key,)):
+                    'WHERE id > ?'
+                    'INNER JOIN base_table on '
+                    'validation_table.key = base_table.key;', (largest_key,)):
+                (bb_bounds, metadata, validation_id,
+                 database_id, source_key) = payload
+
+                unique_id = f'{database_id}:{source_key}'
                 LOGGER.info('processing %d', validation_id)
                 largest_key = max(largest_key, validation_id)
 
+                # fetch imagery list that intersects with the bounding box
                 # [minx,miny,maxx,maxy]
                 bounding_box = [
                     min(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
@@ -435,12 +425,17 @@ def monitor_validation_database(validation_database_path):
                     max(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
                 ]
 
-                # fetch imagery list that intersects with the bounding box
-                    # clip imagery to bounding box
-                    # test if it's valid (no black?)
-                    # if not, save it and record in database?
+                imagry_path = get_dam_bounding_box_imagery(
+                    task_graph, unique_id, bounding_box, WORKSPACE_DIR,
+                    fetch_if_not_downloaded=False)
+                LOGGER.debug(imagry_path)
+                # test if it's valid (no black?)
+                # if not, save it and record in database?
+
             time.sleep(1)
 
 
 if __name__ == '__main__':
+    task_graph = taskgraph.TaskGraph(WORKSPACE_DIR, -1, REPORTING_INTERVAL)
+    build_index(task_graph)
     monitor_validation_database(data_validator.DATABASE_PATH)
