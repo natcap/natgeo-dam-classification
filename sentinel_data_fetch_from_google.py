@@ -15,6 +15,7 @@ import re
 import requests
 from requests.auth import HTTPBasicAuth
 
+import math
 import planet.api
 import numpy
 import urllib.request
@@ -134,7 +135,7 @@ def get_dam_bounding_box_imagery_planet(
     sys.exit()
 
 
-def get_dam_bounding_box_imagery(
+def get_dam_bounding_box_imagery_sentinel(
         task_graph, dam_id, bounding_box, workspace_dir,
         fetch_if_not_downloaded=False):
     """Extract bounding box of grand sentinel imagery around point.
@@ -269,20 +270,11 @@ def fetch_tile_and_bound_data(
         bounding_box, wgs84_srs.ExportToWkt(),
         granule_raster_info['projection'], edge_samples=11)
 
-    # this will be a GeoTIFF, hence the .tif suffix
-    """
-    clipped_raster_path = (
-        f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif')
-    warp_task = task_graph.add_task(
-        func=pygeoprocessing.warp_raster,
-        args=(
-            granule_path, granule_raster_info['pixel_size'],
-            clipped_raster_path, 'near'),
-        kwargs={'target_bb': target_bounding_box},
-        target_path_list=[clipped_raster_path],
-        dependent_task_list=[fetch_task],
-        task_name=f'clip {clipped_raster_path}')
-    """
+    LOGGER.debug(
+        "bounding box lengths %s %s",
+        target_bounding_box[2]-target_bounding_box[0],
+        target_bounding_box[3]-target_bounding_box[1])
+
     png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.png'
     tif_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif'
 
@@ -549,14 +541,38 @@ def monitor_validation_database(validation_database_path):
                 bb_bounds = json.loads(bb_bounds_json.replace("'", '"'))
                 if bb_bounds is not None:
                     LOGGER.debug(bb_bounds[0])
+
+                    lat_len_deg = abs(bb_bounds[0]['lat']-bb_bounds[1]['lat'])
+                    lng_len_deg = abs(bb_bounds[0]['lng']-bb_bounds[1]['lng'])
+                    center_lat = (bb_bounds[0]['lat']+bb_bounds[1]['lat'])/2
+
+                    lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(
+                        center_lat)
+                    lat_len_m = lat_len_deg * lat_d_to_m
+                    lng_len_m = lng_len_deg * lng_d_to_m
+
+                    LOGGER.debug(
+                        "%s %s %s %s %s", center_lat, lat_len_deg,
+                        lng_len_deg, lat_len_m, lng_len_m)
+
+                    lat_m_to_deg = lat_len_deg / lat_len_m
+                    lng_m_to_deg = lng_len_deg / lng_len_m
+
+                    lat_extension_m = (1000 - (lat_len_m/2))
+                    lng_extension_m = (1000 - (lng_len_m/2))
+                    lat_extension_deg = lat_extension_m * lat_m_to_deg
+                    lng_extension_deg = lng_extension_m * lng_m_to_deg
+                    LOGGER.debug(
+                        '%s %s %s %s', lat_extension_deg, lng_extension_deg,
+                        lat_extension_m, lng_extension_m)
                     bounding_box = [
-                        min(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
-                        min(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
-                        max(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
-                        max(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
+                        min(bb_bounds[0]['lng'], bb_bounds[1]['lng'])-lng_extension_deg,
+                        min(bb_bounds[0]['lat'], bb_bounds[1]['lat'])-lat_extension_deg,
+                        max(bb_bounds[0]['lng'], bb_bounds[1]['lng'])+lng_extension_deg,
+                        max(bb_bounds[0]['lat'], bb_bounds[1]['lat'])+lat_extension_deg,
                     ]
 
-                    imagery_path_list = get_dam_bounding_box_imagery_planet(
+                    imagery_path_list = get_dam_bounding_box_imagery_sentinel(
                         task_graph, unique_id, bounding_box, WORKSPACE_DIR,
                         fetch_if_not_downloaded=True)
                     if imagery_path_list:
@@ -576,29 +592,38 @@ def monitor_validation_database(validation_database_path):
             time.sleep(1)
 
 
-def length_of_degree_in_m(lat):
-    """Calculate length of degree given lat
+def len_of_deg_to_lat_lng_m(center_lat):
+    """Calculate length of degree in m.
 
     Adapted from: https://gis.stackexchange.com/a/127327/2397
 
     Parameters:
-        pixel_size (float): length of side of pixel in degrees.
-        lat (float): latitude of the center of the pixel. Note this
+        len_in_deg (float): length in degrees.
+        center_lat (float): latitude of the center of the pixel. Note this
             value +/- half the `pixel-size` must not exceed 90/-90 degrees
             latitude or an invalid area will be calculated.
 
     Returns:
-        Length of degree in m.
+        Area of square pixel of side length `pixel_size` centered at
+        `center_lat` in m^2.
 
     """
-    a = 6378137  # meters
-    b = 6356752.3142  # meters
-    e = numpy.sqrt(1-(b/a)**2)
-    zm = 1 - e*numpy.sin(numpy.radians(lat))
-    zp = 1 + e*numpy.sin(numpy.radians(lat))
-    return numpy.pi * b**2 * (
-        numpy.log(zp/zm) / (2*e) +
-        numpy.sin(numpy.radians(lat)) / (zp*zm)) / 360.
+    # Convert latitude to radians
+    lat = center_lat * math.pi / 180
+    m1 = 111132.92
+    m2 = -559.82
+    m3 = 1.175
+    m4 = -0.0023
+    p1 = 111412.84
+    p2 = -93.5
+    p3 = 0.118
+
+    latlen = (
+        m1 + m2*math.cos(2*lat) + m3*math.cos(4*lat) + m4*math.cos(6*lat))
+    longlen = (
+        p1*math.cos(lat) + p2*math.cos(3*lat) + p3*math.cos(5*lat))
+    return (latlen, longlen)
+
 
 if __name__ == '__main__':
     task_graph = taskgraph.TaskGraph(
