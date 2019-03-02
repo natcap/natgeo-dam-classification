@@ -697,6 +697,7 @@ def monitor_validation_database(validation_database_path):
                         task_graph, unique_id, bounding_box,
                         planet_workspace_dir,
                         planet_asset_fetch_queue)
+                    time.sleep(0.4)
                     """
                     imagery_path_list = get_dam_bounding_box_imagery_sentinel(
                         task_graph, unique_id, bounding_box,
