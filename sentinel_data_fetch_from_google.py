@@ -1,4 +1,6 @@
 """Create a sentinel sqlite database index."""
+import threading
+import queue
 import json
 from lxml import etree
 import subprocess
@@ -13,17 +15,13 @@ import logging
 import sqlite3
 import re
 import requests
-from requests.auth import HTTPBasicAuth
 
 import math
-import planet.api
 import numpy
 import urllib.request
 import urllib.error
 from osgeo import gdal
 from osgeo import osr
-from osgeo import ogr
-import shapely.wkb
 import reproduce
 import pygeoprocessing
 import taskgraph
@@ -79,7 +77,7 @@ def build_index(task_graph):
 
 def get_dam_bounding_box_imagery_planet(
         task_graph, dam_id, bounding_box, workspace_dir,
-        fetch_if_not_downloaded=False):
+        planet_asset_fetch_queue):
     try:
         os.makedirs(workspace_dir)
     except OSError:
@@ -129,86 +127,103 @@ def get_dam_bounding_box_imagery_planet(
         json=stats_endpoint_request).json()
 
     for feature in search_result_json['features']:
-        url = (
+        asset_url = (
             f'https://api.planet.com/data/v1/item-types/'
             f"REOrthoTile/items/{feature['id']}/assets")
-        asset_result_json = session.get(url).json()
+        asset_result_json = session.get(asset_url).json()
         if 'visual' in asset_result_json:
             item_activation_url = (
                 asset_result_json['visual']['_links']['activate'])
+            session.post(item_activation_url)
             # request activation
-            activation_response = session.post(item_activation_url)
-            LOGGER.debug(activation_response.status_code)
-            asset_result_json = session.get(url).json()
-            while True:
-                asset_status = asset_result_json['visual']['status']
-                if asset_status == 'active':
-                    granule_url = asset_result_json['visual']['location']
-                    granule_path = os.path.join(
-                        workspace_dir, f"{feature['id']}.tif")
-                    if os.path.exists(granule_path):
-                        # already downloaded
-                        break
-                    # else download it
-                    session.urlretrieve(granule_url, granule_path)
-                    break
-                else:
-                    LOGGER.info("not ready yet %s waiting 1sec", asset_status)
-                    time.sleep(1)
+            granule_path = os.path.join(
+                workspace_dir, f"{feature['id']}.tif")
+            LOGGER.info("scheduling download of %s", feature['id'])
+            planet_asset_fetch_queue.put(
+                (granule_path, feature['id'], bounding_box, asset_url))
             break
-    # now clip and convert to png
-    granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
-    wgs84_srs = osr.SpatialReference()
-    wgs84_srs.ImportFromEPSG(4326)
-    target_bounding_box = pygeoprocessing.transform_bounding_box(
-        bounding_box, wgs84_srs.ExportToWkt(),
-        granule_raster_info['projection'], edge_samples=11)
 
-    lat_len_deg = abs(target_bounding_box[1]-target_bounding_box[3])
-    lng_len_deg = abs(target_bounding_box[0]-target_bounding_box[2])
-    center_lat = (target_bounding_box[1]+target_bounding_box[3])/2
 
-    lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(center_lat)
-    lat_len_m = lat_len_deg * lat_d_to_m
-    lng_len_m = lng_len_deg * lng_d_to_m
+def process_planet_asset_fetch_queue(
+        planet_asset_fetch_queue, dam_imagery_dir, workspace_dir):
+    for path in [dam_imagery_dir, workspace_dir]:
+        try:
+            os.makedirs(path)
+        except OSError:
+            pass
+    session = requests.Session()
+    session.auth = (os.environ['PL_API_KEY'], '')
+    while True:
+        time.sleep(1)
+        payload = planet_asset_fetch_queue.get()
+        if payload == 'STOP':
+            break
+        granule_path, feature_id, bounding_box, asset_url = payload
+        LOGGER.debug('got a payload %s', payload)
+        asset_result_json = session.get(asset_url).json()
+        asset_status = asset_result_json['visual']['status']
+        LOGGER.debug('asset status %s', asset_status)
+        if asset_status != 'active':
+            continue
+        granule_url = asset_result_json['visual']['location']
+        granule_path = os.path.join(workspace_dir, f"{feature_id}.tif")
+        if not os.path.exists(granule_path):
+            urllib.request.urlretrieve(granule_url, granule_path)
 
-    LOGGER.debug(
-        "%s %s %s %s %s", center_lat, lat_len_deg,
-        lng_len_deg, lat_len_m, lng_len_m)
+        png_path = os.path.join(workspace_dir, f"{feature_id}_clip.png")
+        target_png_path = os.path.join(
+            dam_imagery_dir, os.path.basename(png_path))
+        if not os.path.exists(png_path):
+            granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
+            wgs84_srs = osr.SpatialReference()
+            wgs84_srs.ImportFromEPSG(4326)
+            target_bounding_box = pygeoprocessing.transform_bounding_box(
+                bounding_box, wgs84_srs.ExportToWkt(),
+                granule_raster_info['projection'], edge_samples=11)
 
-    lat_m_to_deg = lat_len_deg / lat_len_m
-    lng_m_to_deg = lng_len_deg / lng_len_m
+            lat_len_deg = abs(target_bounding_box[1]-target_bounding_box[3])
+            lng_len_deg = abs(target_bounding_box[0]-target_bounding_box[2])
+            center_lat = (target_bounding_box[1]+target_bounding_box[3])/2
 
-    lat_extension_m = (500 - (lat_len_m/2))
-    lng_extension_m = (500 - (lng_len_m/2))
-    lat_extension_deg = lat_extension_m * lat_m_to_deg
-    lng_extension_deg = lng_extension_m * lng_m_to_deg
-    LOGGER.debug(
-        '%s %s %s %s', lat_extension_deg, lng_extension_deg,
-        lat_extension_m, lng_extension_m)
-    bounding_box = [
-        target_bounding_box[0]-lng_extension_deg,
-        target_bounding_box[1]-lat_extension_deg,
-        target_bounding_box[2]+lng_extension_deg,
-        target_bounding_box[3]+lat_extension_deg,
-    ]
+            lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(center_lat)
+            lat_len_m = lat_len_deg * lat_d_to_m
+            lng_len_m = lng_len_deg * lng_d_to_m
 
-    LOGGER.debug(
-        "bounding box lengths %s %s",
-        target_bounding_box[2]-target_bounding_box[0],
-        target_bounding_box[3]-target_bounding_box[1])
+            LOGGER.debug(
+                "%s %s %s %s %s", center_lat, lat_len_deg,
+                lng_len_deg, lat_len_m, lng_len_m)
 
-    png_path = os.path.join(workspace_dir, f"{feature['id']}_clip.png")
-    if not os.path.exists(png_path):
-        subprocess.run([
-            'gdal_translate',
-            '-projwin',
-            str(target_bounding_box[0]),
-            str(target_bounding_box[3]),
-            str(target_bounding_box[2]),
-            str(target_bounding_box[1]),
-            '-of', 'PNG', granule_path, png_path],)
-    return [png_path]
+            lat_m_to_deg = lat_len_deg / lat_len_m
+            lng_m_to_deg = lng_len_deg / lng_len_m
+
+            lat_extension_m = (500 - (lat_len_m/2))
+            lng_extension_m = (500 - (lng_len_m/2))
+            lat_extension_deg = lat_extension_m * lat_m_to_deg
+            lng_extension_deg = lng_extension_m * lng_m_to_deg
+            LOGGER.debug(
+                '%s %s %s %s', lat_extension_deg, lng_extension_deg,
+                lat_extension_m, lng_extension_m)
+            bounding_box = [
+                target_bounding_box[0]-lng_extension_deg,
+                target_bounding_box[1]-lat_extension_deg,
+                target_bounding_box[2]+lng_extension_deg,
+                target_bounding_box[3]+lat_extension_deg,
+            ]
+
+            LOGGER.debug(
+                "bounding box lengths %s %s",
+                target_bounding_box[2]-target_bounding_box[0],
+                target_bounding_box[3]-target_bounding_box[1])
+            subprocess.run([
+                'gdal_translate',
+                '-projwin',
+                str(target_bounding_box[0]),
+                str(target_bounding_box[3]),
+                str(target_bounding_box[2]),
+                str(target_bounding_box[1]),
+                '-of', 'PNG', granule_path, png_path],)
+        if not os.path.exists(target_png_path):
+            shutil.copy(png_path, target_png_path)
 
 
 def get_dam_bounding_box_imagery_sentinel(
@@ -274,26 +289,20 @@ def get_dam_bounding_box_imagery_sentinel(
             r = requests.head(manifest_url)
             if r.status_code != requests.codes.ok:
                 return []
-
-            manifest_task_fetch = task_graph.add_task(
-                func=urllib.request.urlretrieve,
-                args=(manifest_url, manifest_path),
-                target_path_list=[manifest_path],
-                task_name=f'fetch {manifest_url}')
+            if not os.path.exists(manifest_path):
+                urllib.request.urlretrieve(manifest_url, manifest_path)
             return fetch_tile_and_bound_data(
-                task_graph, [manifest_task_fetch], manifest_path,
+                task_graph, manifest_path,
                 url_prefix, dam_id, bounding_box, granule_dir)
 
 
 def fetch_tile_and_bound_data(
-        task_graph, dependent_task_list, manifest_path, url_prefix,
+        task_graph, manifest_path, url_prefix,
         unique_id, bounding_box, target_dir):
     """Fetch tile from url defined in manifest_path.
 
     Parameters:
         task_graph (TaskGraph): taskgraph object to schedule against.
-        dependent_task_list (list): list of tasks that need to be executed
-            first before any scheduling.
         manifest_path (str): path to a SAFE file describing sentinel data.
         url_prefix (str): url to prepend to any URLs needed by this function.
         unique_id (str): this string is appended to the fetched file
@@ -308,7 +317,6 @@ def fetch_tile_and_bound_data(
     wgs84_srs = osr.SpatialReference()
     wgs84_srs.ImportFromEPSG(4326)
 
-    png_path_list = []
     granule_path_list = []
     for band_id in (
             #'IMG_DATA_Band_TCI_Tile1_Data',
@@ -327,20 +335,12 @@ def fetch_tile_and_bound_data(
         granule_url = f"{url_prefix}/{clean_href}"
         granule_path = os.path.join(
             target_dir, os.path.basename(granule_url))
-        while True:
+        if not os.path.exists(granule_path):
             try:
-                fetch_task = task_graph.add_task(
-                    func=urllib.request.urlretrieve,
-                    args=(granule_url, granule_path),
-                    target_path_list=[granule_path],
-                    dependent_task_list=dependent_task_list,
-                    task_name=f'fetch {granule_path}')
-                fetch_task.join()
-                break
+                urllib.request.urlretrieve(granule_url, granule_path)
             except:
                 LOGGER.exception(f"couldn't get {granule_url}")
                 return []
-
         granule_path_list.append(granule_path)
 
     granule_raster_info = pygeoprocessing.get_raster_info(
@@ -358,37 +358,37 @@ def fetch_tile_and_bound_data(
 
     tif_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif'
 
-    file_list_path = os.path.join(target_dir, 'band_list.txt')
-    with open(file_list_path, 'w') as file_list_file:
-        for granule_path in granule_path_list:
-            file_list_file.write(f'{granule_path}\n')
+    file_list_path = os.path.join(target_dir, f'{unique_id}_band_list.txt')
+    if not os.path.exists(file_list_path):
+        with open(file_list_path, 'w') as file_list_file:
+            for granule_path in granule_path_list:
+                file_list_file.write(f'{granule_path}\n')
 
-    vrt_path = os.path.join(target_dir, 'band_stack.vrt')
-    LOGGER.debug(str(([
-            'gdalbuildvrt', '-separate', '-input_file_list', file_list_path,
-            vrt_path])))
-    vrt_task = task_graph.add_task(
-        func=subprocess.run,
-        args=([
-            'gdalbuildvrt', '-separate', '-input_file_list', file_list_path,
-            vrt_path],),
-        target_path_list=[vrt_path],
-        task_name=f'build vrt {vrt_path}')
+    vrt_path = os.path.join(target_dir, f'{unique_id}_band_stack.vrt')
+    if not os.path.exists(vrt_path):
+        vrt_task = task_graph.add_task(
+            func=subprocess.run,
+            args=([
+                'gdalbuildvrt', '-separate', '-input_file_list', file_list_path,
+                vrt_path],),
+            target_path_list=[vrt_path],
+            task_name=f'build vrt {vrt_path}')
 
-    warp_tif_task = task_graph.add_task(
-        func=subprocess.run,
-        args=([
-            'gdal_translate',
-            '-projwin',
-            str(target_bounding_box[0]),
-            str(target_bounding_box[3]),
-            str(target_bounding_box[2]),
-            str(target_bounding_box[1]),
-            '-of', 'GTiff', vrt_path, tif_path],),
-        target_path_list=[tif_path],
-        dependent_task_list=[vrt_task],
-        task_name=f'warp {tif_path}')
-    warp_tif_task.join()
+    if not os.path.exists(tif_path):
+        warp_tif_task = task_graph.add_task(
+            func=subprocess.run,
+            args=([
+                'gdal_translate',
+                '-projwin',
+                str(target_bounding_box[0]),
+                str(target_bounding_box[3]),
+                str(target_bounding_box[2]),
+                str(target_bounding_box[1]),
+                '-of', 'GTiff', vrt_path, tif_path],),
+            target_path_list=[tif_path],
+            dependent_task_list=[vrt_task],
+            task_name=f'warp {tif_path}')
+        warp_tif_task.join()
 
     tif_raster = gdal.OpenEx(tif_path, gdal.OF_RASTER)
     avg_val_list = []
@@ -408,21 +408,27 @@ def fetch_tile_and_bound_data(
         return []
 
     png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}_{avg_val}.png'
-    warp_png_task = task_graph.add_task(
-        func=subprocess.run,
-        args=([
-            'gdal_translate',
-            '-of', 'PNG',
-            '-scale_1', str(percentile_list[0][0]), str(percentile_list[0][1]), '0', str(65536),
-            '-scale_2', str(percentile_list[1][0]), str(percentile_list[1][1]), '0', str(65536),
-            '-scale_3', str(percentile_list[2][0]), str(percentile_list[2][1]), '0', str(65536),
-            tif_path, png_path],),
-        target_path_list=[png_path],
-        dependent_task_list=[vrt_task],
-        task_name=f'warp {png_path}')
-    warp_png_task.join()
-    png_path_list.append(png_path)
-    return png_path_list
+    if not os.path.exists(png_path):
+        warp_png_task = task_graph.add_task(
+            func=subprocess.run,
+            args=([
+                'gdal_translate',
+                '-of', 'PNG',
+                '-scale_1',
+                str(percentile_list[0][0]),
+                str(percentile_list[0][1]), '0', str(65536),
+                '-scale_2',
+                str(percentile_list[1][0]),
+                str(percentile_list[1][1]), '0', str(65536),
+                '-scale_3',
+                str(percentile_list[2][0]),
+                str(percentile_list[2][1]), '0', str(65536),
+                tif_path, png_path],),
+            target_path_list=[png_path],
+            dependent_task_list=[vrt_task],
+            task_name=f'warp {png_path}')
+        warp_png_task.join()
+    return [png_path]
 
 
 def extract_bounding_box(
@@ -603,6 +609,17 @@ def monitor_validation_database(validation_database_path):
         os.makedirs(DAM_IMAGERY_DIR)
     except OSError:
         pass
+
+    planet_asset_fetch_queue = queue.Queue(1)
+    planet_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'planet')
+    planet_workspace_dir = os.path.join(WORKSPACE_DIR, 'planet')
+    process_planet_asset_fetch_queue_thread = threading.Thread(
+        target=process_planet_asset_fetch_queue,
+        args=(
+            planet_asset_fetch_queue, planet_imagery_dir,
+            planet_workspace_dir))
+    process_planet_asset_fetch_queue_thread.start()
+
     largest_key = -1
     with sqlite3.connect(validation_database_path) as val_db_conn:
         while True:
@@ -661,10 +678,14 @@ def monitor_validation_database(validation_database_path):
                         max(bb_bounds[0]['lat'], bb_bounds[1]['lat'])+lat_extension_deg,
                     ]
 
-                    imagery_path_list = get_dam_bounding_box_imagery_planet(
+                    get_dam_bounding_box_imagery_planet(
                         task_graph, unique_id, bounding_box,
-                        os.path.join(WORKSPACE_DIR, 'planet'),
-                        fetch_if_not_downloaded=True)
+                        planet_workspace_dir,
+                        planet_asset_fetch_queue)
+                    """
+                    imagery_path_list = get_dam_bounding_box_imagery_sentinel(
+                        task_graph, unique_id, bounding_box,
+                        os.path.join(WORKSPACE_DIR, 'sentinel2'))
                     if imagery_path_list:
                         for imagery_path in imagery_path_list:
                             LOGGER.info(
@@ -674,6 +695,7 @@ def monitor_validation_database(validation_database_path):
                     else:
                         LOGGER.warn(
                             'no valid imagery found for %s', unique_id)
+                    """
                 else:
                     LOGGER.info('no bounding box registered')
                 # test if it's valid (no black?)
