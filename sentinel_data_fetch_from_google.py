@@ -248,8 +248,6 @@ def get_dam_bounding_box_imagery_sentinel(
         dam_id (str): unique identifier for dam
         bounding_box (list): [xmin, ymin, xmax, ymax] in WGS84 coords.
         workspace_dir (str): path to directory to write results into.
-        fetch_if_not_downloaded (bool): if False, raises a StopIteration if
-            the necessary tile has not been fetched. Otherwise downloads tile.
 
     Returns:
         List of local file path images.
@@ -293,10 +291,6 @@ def get_dam_bounding_box_imagery_sentinel(
 
             manifest_url = f'{url_prefix}/manifest.safe'
             manifest_path = os.path.join(granule_dir, 'manifest.safe')
-            if (not fetch_if_not_downloaded and
-                    not os.path.exists(manifest_path)):
-                raise StopIteration('manifest not downloaded')
-
             # download the manifest
             r = requests.head(manifest_url)
             if r.status_code != requests.codes.ok:
@@ -631,8 +625,15 @@ def monitor_validation_database(validation_database_path):
             planet_asset_fetch_queue, planet_imagery_dir,
             planet_workspace_dir))
     process_planet_asset_fetch_queue_thread.start()
-
     largest_key = -1
+
+    sentinel_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'sentinel')
+    try:
+        os.makedirs(sentinel_imagery_dir)
+    except:
+        pass
+    sentinel_workspace_dir = os.path.join(WORKSPACE_DIR, 'sentinel')
+
     with sqlite3.connect(validation_database_path) as val_db_conn:
         while True:
             print('trying new select')
@@ -694,26 +695,22 @@ def monitor_validation_database(validation_database_path):
                         task_graph, unique_id, bounding_box,
                         planet_workspace_dir,
                         planet_asset_fetch_queue)
-                    """
                     imagery_path_list = get_dam_bounding_box_imagery_sentinel(
                         task_graph, unique_id, bounding_box,
-                        os.path.join(WORKSPACE_DIR, 'sentinel2'))
+                        sentinel_workspace_dir)
                     if imagery_path_list:
                         for imagery_path in imagery_path_list:
                             LOGGER.info(
                                 'copying %s to %s', imagery_path,
-                                DAM_IMAGERY_DIR)
-                            shutil.copy(imagery_path, DAM_IMAGERY_DIR)
+                                sentinel_imagery_dir)
+                            shutil.copy(imagery_path, sentinel_imagery_dir)
                     else:
                         LOGGER.warn(
                             'no valid imagery found for %s', unique_id)
-                    """
                 else:
                     LOGGER.info('no bounding box registered')
                 # test if it's valid (no black?)
                 # if not, save it and record in database?
-
-            time.sleep(1)
 
 
 def len_of_deg_to_lat_lng_m(center_lat):
