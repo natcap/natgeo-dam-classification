@@ -313,7 +313,7 @@ def fetch_tile_and_bound_data(
     avg_val_list = []
     percentile_list = []
     for band_id in range(1, tif_raster.RasterCount+1):
-        band = tif_raster.GetRasterBand(1)
+        band = tif_raster.GetRasterBand(band_id)
         array = band.ReadAsArray()
         avg_val_list.append(numpy.median(array))
         percentile_list.append(
