@@ -80,7 +80,10 @@ def build_index(task_graph):
 def get_dam_bounding_box_imagery_planet(
         task_graph, dam_id, bounding_box, workspace_dir,
         fetch_if_not_downloaded=False):
-    planet_client = planet.api.ClientV1()
+    try:
+        os.makedirs(workspace_dir)
+    except OSError:
+        pass
     aoi = {
         "type": "Polygon",
         "coordinates": [
@@ -118,21 +121,99 @@ def get_dam_bounding_box_imagery_planet(
         "filter": bounding_box_filter
     }
 
-    result = requests.post(
-        'https://api.planet.com/data/v1/quick-search',
-        auth=HTTPBasicAuth(os.environ['PL_API_KEY'], ''),
-        json=stats_endpoint_request)
-    LOGGER.debug(result.text)
-    result_json = json.loads(result.text)
+    session = requests.Session()
+    session.auth = (os.environ['PL_API_KEY'], '')
 
-    for feature in result_json['features']:
+    search_result_json = session.post(
+        'https://api.planet.com/data/v1/quick-search',
+        json=stats_endpoint_request).json()
+
+    for feature in search_result_json['features']:
         url = (
             f'https://api.planet.com/data/v1/item-types/'
             f"REOrthoTile/items/{feature['id']}/assets")
-        result = requests.get(
-            url, auth=HTTPBasicAuth(os.environ['PL_API_KEY'], ''))
-        LOGGER.debug(result.json())
+        asset_result_json = session.get(url).json()
+        if 'visual' in asset_result_json:
+            item_activation_url = (
+                asset_result_json['visual']['_links']['activate'])
+            # request activation
+            activation_response = session.post(item_activation_url)
+            LOGGER.debug(activation_response.status_code)
+            asset_result_json = session.get(url).json()
+            while True:
+                asset_status = asset_result_json['visual']['status']
+                if asset_status == 'active':
+                    granule_url = asset_result_json['visual']['location']
+                    granule_path = os.path.join(
+                        workspace_dir, f"{feature['id']}.tif")
+                    fetch_task = task_graph.add_task(
+                        func=urllib.request.urlretrieve,
+                        args=(granule_url, granule_path),
+                        target_path_list=[granule_path],
+                        task_name=f'fetch {granule_path}')
+                    fetch_task.join()
+                    break
+                else:
+                    LOGGER.info("not ready yet %s waiting 1sec", asset_status)
+                    time.sleep(1)
+            break
+    granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
+    wgs84_srs = osr.SpatialReference()
+    wgs84_srs.ImportFromEPSG(4326)
+    target_bounding_box = pygeoprocessing.transform_bounding_box(
+        bounding_box, wgs84_srs.ExportToWkt(),
+        granule_raster_info['projection'], edge_samples=11)
+
+    lat_len_deg = abs(target_bounding_box[1]-target_bounding_box[3])
+    lng_len_deg = abs(target_bounding_box[0]-target_bounding_box[2])
+    center_lat = (target_bounding_box[1]+target_bounding_box[3])/2
+
+    lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(center_lat)
+    lat_len_m = lat_len_deg * lat_d_to_m
+    lng_len_m = lng_len_deg * lng_d_to_m
+
+    LOGGER.debug(
+        "%s %s %s %s %s", center_lat, lat_len_deg,
+        lng_len_deg, lat_len_m, lng_len_m)
+
+    lat_m_to_deg = lat_len_deg / lat_len_m
+    lng_m_to_deg = lng_len_deg / lng_len_m
+
+    lat_extension_m = (500 - (lat_len_m/2))
+    lng_extension_m = (500 - (lng_len_m/2))
+    lat_extension_deg = lat_extension_m * lat_m_to_deg
+    lng_extension_deg = lng_extension_m * lng_m_to_deg
+    LOGGER.debug(
+        '%s %s %s %s', lat_extension_deg, lng_extension_deg,
+        lat_extension_m, lng_extension_m)
+    bounding_box = [
+        target_bounding_box[0]-lng_extension_deg,
+        target_bounding_box[1]-lat_extension_deg,
+        target_bounding_box[2]+lng_extension_deg,
+        target_bounding_box[3]+lat_extension_deg,
+    ]
+
+    LOGGER.debug(
+        "bounding box lengths %s %s",
+        target_bounding_box[2]-target_bounding_box[0],
+        target_bounding_box[3]-target_bounding_box[1])
+
+    png_path = os.path.join(workspace_dir, f"{feature['id']}_clip.png")
+    clip_tif_task = task_graph.add_task(
+        func=subprocess.run,
+        args=([
+            'gdal_translate',
+            '-projwin',
+            str(target_bounding_box[0]),
+            str(target_bounding_box[3]),
+            str(target_bounding_box[2]),
+            str(target_bounding_box[1]),
+            '-of', 'PNG', granule_path, png_path],),
+        target_path_list=[png_path],
+        task_name=f'warp {png_path}')
+    clip_tif_task.join()
     sys.exit()
+    return [png_path]
 
 
 def get_dam_bounding_box_imagery_sentinel(
@@ -585,8 +666,9 @@ def monitor_validation_database(validation_database_path):
                         max(bb_bounds[0]['lat'], bb_bounds[1]['lat'])+lat_extension_deg,
                     ]
 
-                    imagery_path_list = get_dam_bounding_box_imagery_sentinel(
-                        task_graph, unique_id, bounding_box, WORKSPACE_DIR,
+                    imagery_path_list = get_dam_bounding_box_imagery_planet(
+                        task_graph, unique_id, bounding_box,
+                        os.path.join(WORKSPACE_DIR, 'planet'),
                         fetch_if_not_downloaded=True)
                     if imagery_path_list:
                         for imagery_path in imagery_path_list:
