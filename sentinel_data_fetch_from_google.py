@@ -193,7 +193,12 @@ def get_dam_bounding_box_imagery_sentinel(
             if (not fetch_if_not_downloaded and
                     not os.path.exists(manifest_path)):
                 raise StopIteration('manifest not downloaded')
+
             # download the manifest
+            r = requests.head(manifest_url)
+            if r.status_code != requests.codes.ok:
+                return []
+
             manifest_task_fetch = task_graph.add_task(
                 func=urllib.request.urlretrieve,
                 args=(manifest_url, manifest_path),
@@ -317,12 +322,12 @@ def fetch_tile_and_bound_data(
         array = band.ReadAsArray()
         avg_val_list.append(numpy.median(array))
         percentile_list.append(
-            numpy.percentile(array, [5, 95]))
+            numpy.percentile(array, [1, 99]))
         band = None
     tif_raster = None
     LOGGER.debug('percentile_list %s', percentile_list)
     avg_val = numpy.mean(avg_val_list)
-    if avg_val < 500:
+    if avg_val < 500 or avg_val > 3000:
         # black image or too bright
         return []
 
@@ -566,8 +571,8 @@ def monitor_validation_database(validation_database_path):
                     lat_m_to_deg = lat_len_deg / lat_len_m
                     lng_m_to_deg = lng_len_deg / lng_len_m
 
-                    lat_extension_m = (1000 - (lat_len_m/2))
-                    lng_extension_m = (1000 - (lng_len_m/2))
+                    lat_extension_m = (500 - (lat_len_m/2))
+                    lng_extension_m = (500 - (lng_len_m/2))
                     lat_extension_deg = lat_extension_m * lat_m_to_deg
                     lng_extension_deg = lng_extension_m * lng_m_to_deg
                     LOGGER.debug(
