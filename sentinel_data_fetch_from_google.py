@@ -182,6 +182,7 @@ def process_planet_asset_fetch_queue(
         granule_url = asset_result_json['visual']['location']
         granule_path = os.path.join(workspace_dir, f"{feature_id}.tif")
         if not os.path.exists(granule_path):
+            LOGGER.debug('retrieve %s', granule_path)
             urllib.request.urlretrieve(granule_url, granule_path)
 
         png_path = os.path.join(workspace_dir, f"{feature_id}_clip.png")
@@ -696,6 +697,7 @@ def monitor_validation_database(validation_database_path):
                         task_graph, unique_id, bounding_box,
                         planet_workspace_dir,
                         planet_asset_fetch_queue)
+                    """
                     imagery_path_list = get_dam_bounding_box_imagery_sentinel(
                         task_graph, unique_id, bounding_box,
                         sentinel_workspace_dir)
@@ -708,6 +710,7 @@ def monitor_validation_database(validation_database_path):
                     else:
                         LOGGER.warn(
                             'no valid imagery found for %s', unique_id)
+                    """
                 else:
                     LOGGER.info('no bounding box registered')
                 # test if it's valid (no black?)
