@@ -153,17 +153,30 @@ def process_planet_asset_fetch_queue(
             pass
     session = requests.Session()
     session.auth = (os.environ['PL_API_KEY'], '')
+    processing_queue = queue.Queue()
+    should_stop = False
     while True:
-        time.sleep(1)
-        payload = planet_asset_fetch_queue.get()
-        if payload == 'STOP':
-            break
+        time.sleep(.2)
+        try:
+            payload = planet_asset_fetch_queue.get_nowait()
+            if payload == 'STOP':
+                should_stop = True
+                continue
+        except queue.Empty:
+            try:
+                payload = processing_queue.get_nowait()
+            except queue.Empty:
+                if should_stop:
+                    return
+                continue
         granule_path, feature_id, bounding_box, asset_url = payload
         LOGGER.debug('got a payload %s', payload)
         asset_result_json = session.get(asset_url).json()
         asset_status = asset_result_json['visual']['status']
         LOGGER.debug('asset status %s', asset_status)
         if asset_status != 'active':
+            LOGGER.info('not active, rescheduling')
+            processing_queue.put(payload)
             continue
         granule_url = asset_result_json['visual']['location']
         granule_path = os.path.join(workspace_dir, f"{feature_id}.tif")
@@ -227,8 +240,7 @@ def process_planet_asset_fetch_queue(
 
 
 def get_dam_bounding_box_imagery_sentinel(
-        task_graph, dam_id, bounding_box, workspace_dir,
-        fetch_if_not_downloaded=False):
+        task_graph, dam_id, bounding_box, workspace_dir):
     """Extract bounding box of grand sentinel imagery around point.
 
     Parameters:
@@ -610,7 +622,7 @@ def monitor_validation_database(validation_database_path):
     except OSError:
         pass
 
-    planet_asset_fetch_queue = queue.Queue(1)
+    planet_asset_fetch_queue = queue.Queue(100)
     planet_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'planet')
     planet_workspace_dir = os.path.join(WORKSPACE_DIR, 'planet')
     process_planet_asset_fetch_queue_thread = threading.Thread(
