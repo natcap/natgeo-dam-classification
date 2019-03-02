@@ -750,6 +750,6 @@ def len_of_deg_to_lat_lng_m(center_lat):
 if __name__ == '__main__':
     task_graph = taskgraph.TaskGraph(
         WORKSPACE_DIR, -1,
-        reporting_interval=REPORTING_INTERVAL, tolerant_task_failure=False)
+        reporting_interval=REPORTING_INTERVAL)
     build_index(task_graph)
     monitor_validation_database(data_validator.DATABASE_PATH)
