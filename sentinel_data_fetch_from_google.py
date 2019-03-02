@@ -12,7 +12,11 @@ import os
 import logging
 import sqlite3
 import re
+import requests
+from requests.auth import HTTPBasicAuth
 
+import planet.api
+import numpy
 import urllib.request
 import urllib.error
 from osgeo import gdal
@@ -29,7 +33,8 @@ OPENER = urllib.request.build_opener()
 OPENER.addheaders = [('User-agent', 'Mozilla/5.0')]
 urllib.request.install_opener(OPENER)
 
-WORKSPACE_DIR = 'workspace_imagry'
+WORKSPACE_DIR = 'workspace_imagery'
+DAM_IMAGERY_DIR = os.path.join('images', 'dam_imagery')
 SENTINEL_CSV_BUCKET_ID_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
 SENTINEL_CSV_GZ_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
 SENTINEL_SQLITE_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.db')
@@ -71,6 +76,64 @@ def build_index(task_graph):
     task_graph.join()
 
 
+def get_dam_bounding_box_imagery_planet(
+        task_graph, dam_id, bounding_box, workspace_dir,
+        fetch_if_not_downloaded=False):
+    planet_client = planet.api.ClientV1()
+    aoi = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [bounding_box[0], bounding_box[1]],
+                [bounding_box[2], bounding_box[1]],
+                [bounding_box[2], bounding_box[3]],
+                [bounding_box[0], bounding_box[3]],
+                [bounding_box[0], bounding_box[1]],
+            ]
+        ]
+    }
+    geometry_filter = {
+        "type": "GeometryFilter",
+        "field_name": "geometry",
+        "config": aoi
+    }
+
+    cloud_cover_filter = {
+        "type": "RangeFilter",
+        "field_name": "cloud_cover",
+        "config": {
+            "lte": 0.0
+        }
+    }
+
+    bounding_box_filter = {
+        "type": "AndFilter",
+        "config": [geometry_filter, cloud_cover_filter]
+    }
+
+    # Stats API request object
+    stats_endpoint_request = {
+        "item_types": ["REOrthoTile"],
+        "filter": bounding_box_filter
+    }
+
+    result = requests.post(
+        'https://api.planet.com/data/v1/quick-search',
+        auth=HTTPBasicAuth(os.environ['PL_API_KEY'], ''),
+        json=stats_endpoint_request)
+    LOGGER.debug(result.text)
+    result_json = json.loads(result.text)
+
+    for feature in result_json['features']:
+        url = (
+            f'https://api.planet.com/data/v1/item-types/'
+            f"REOrthoTile/items/{feature['id']}/assets")
+        result = requests.get(
+            url, auth=HTTPBasicAuth(os.environ['PL_API_KEY'], ''))
+        LOGGER.debug(result.json())
+    sys.exit()
+
+
 def get_dam_bounding_box_imagery(
         task_graph, dam_id, bounding_box, workspace_dir,
         fetch_if_not_downloaded=False):
@@ -85,9 +148,10 @@ def get_dam_bounding_box_imagery(
             the necessary tile has not been fetched. Otherwise downloads tile.
 
     Returns:
-        Local file path location of image.
+        List of local file path images.
 
     """
+    LOGGER.debug(bounding_box)
     with sqlite3.connect(SENTINEL_SQLITE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -96,7 +160,8 @@ def get_dam_bounding_box_imagery(
             '  NORTH_LAT > ? AND '
             '  SOUTH_LAT < ? AND '
             '  WEST_LON < ? AND '
-            '  EAST_LON > ?'
+            '  EAST_LON > ? AND '
+            '  CLOUD_COVER < 100.0 '
             'ORDER BY'
             '   CLOUD_COVER ASC,'
             '   SENSING_TIME DESC '
@@ -105,7 +170,11 @@ def get_dam_bounding_box_imagery(
              bounding_box[0], bounding_box[2]))
 
         for result in cursor:
-            granule_dir = os.path.join(workspace_dir, result[0])
+            # make subidrectories so we don't get swamped with directories
+            granule_dir = os.path.join(
+                workspace_dir, 'granule_dir',
+                result[0][-1], result[0][-2], result[0][-3], result[0][-4],
+                result[0])
             try:
                 os.makedirs(granule_dir)
             except OSError:
@@ -120,14 +189,15 @@ def get_dam_bounding_box_imagery(
 
             manifest_url = f'{url_prefix}/manifest.safe'
             manifest_path = os.path.join(granule_dir, 'manifest.safe')
-            if fetch_if_not_downloaded and not os.path.exists(manifest_path):
+            if (not fetch_if_not_downloaded and
+                    not os.path.exists(manifest_path)):
                 raise StopIteration('manifest not downloaded')
+            # download the manifest
             manifest_task_fetch = task_graph.add_task(
                 func=urllib.request.urlretrieve,
                 args=(manifest_url, manifest_path),
                 target_path_list=[manifest_path],
                 task_name=f'fetch {manifest_url}')
-
             return fetch_tile_and_bound_data(
                 task_graph, [manifest_task_fetch], manifest_path,
                 url_prefix, dam_id, bounding_box, granule_dir)
@@ -150,17 +220,19 @@ def fetch_tile_and_bound_data(
         target_dir (str): path to directory which to download the data object.
 
     Returns:
-        Path to local png image.
+        List of local png images.
 
     """
     wgs84_srs = osr.SpatialReference()
     wgs84_srs.ImportFromEPSG(4326)
 
+    png_path_list = []
+    granule_path_list = []
     for band_id in (
-            'IMG_DATA_Band_TCI_Tile1_Data',
-            #'IMG_DATA_Band_10m_1_Tile1_Data',
-            #'IMG_DATA_Band_10m_2_Tile1_Data',
-            #'IMG_DATA_Band_10m_3_Tile1_Data',
+            #'IMG_DATA_Band_TCI_Tile1_Data',
+            'IMG_DATA_Band_10m_1_Tile1_Data',
+            'IMG_DATA_Band_10m_2_Tile1_Data',
+            'IMG_DATA_Band_10m_3_Tile1_Data',
             ):
         manifest_xml = etree.parse(manifest_path).getroot().xpath(
             f"//dataObject[@ID = '{band_id}']/*/fileLocation")
@@ -173,10 +245,8 @@ def fetch_tile_and_bound_data(
         granule_url = f"{url_prefix}/{clean_href}"
         granule_path = os.path.join(
             target_dir, os.path.basename(granule_url))
-        fetch_attempt = 0
         while True:
             try:
-                fetch_attempt += 1
                 fetch_task = task_graph.add_task(
                     func=urllib.request.urlretrieve,
                     args=(granule_url, granule_path),
@@ -186,43 +256,92 @@ def fetch_tile_and_bound_data(
                 fetch_task.join()
                 break
             except:
-                if fetch_attempt == 5:
-                    raise
-                sleep_time = fetch_attempt * 5.0
-                LOGGER.exception(
-                    f"couldn't get {granule_url}, waiting {sleep_time}s")
-                time.sleep(sleep_time)
+                LOGGER.exception(f"couldn't get {granule_url}")
+                return []
 
-        granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
-        wgs84_srs = osr.SpatialReference()
-        wgs84_srs.ImportFromEPSG(4326)
-        target_bounding_box = pygeoprocessing.transform_bounding_box(
-            bounding_box, wgs84_srs.ExportToWkt(),
-            granule_raster_info['projection'], edge_samples=11)
+        granule_path_list.append(granule_path)
 
-        # this will be a GeoTIFF, hence the .tif suffix
-        clipped_raster_path = (
-            f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif')
-        warp_task = task_graph.add_task(
-            func=pygeoprocessing.warp_raster,
-            args=(
-                granule_path, granule_raster_info['pixel_size'],
-                clipped_raster_path, 'near'),
-            kwargs={'target_bb': target_bounding_box},
-            target_path_list=[clipped_raster_path],
-            dependent_task_list=[fetch_task],
-            task_name=f'clip {clipped_raster_path}')
-        png_path = f'{os.path.splitext(clipped_raster_path)[0]}.png'
-        warp_task = task_graph.add_task(
-            func=subprocess.run,
-            args=([
-                'gdal_translate', '-of', 'PNG', clipped_raster_path,
-                png_path],),
-            target_path_list=[png_path],
-            dependent_task_list=[warp_task],
-            task_name=f'warp {png_path}')
-        warp_task.join()
-        return png_path
+    granule_raster_info = pygeoprocessing.get_raster_info(
+        granule_path_list[0])
+    wgs84_srs = osr.SpatialReference()
+    wgs84_srs.ImportFromEPSG(4326)
+    target_bounding_box = pygeoprocessing.transform_bounding_box(
+        bounding_box, wgs84_srs.ExportToWkt(),
+        granule_raster_info['projection'], edge_samples=11)
+
+    # this will be a GeoTIFF, hence the .tif suffix
+    """
+    clipped_raster_path = (
+        f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif')
+    warp_task = task_graph.add_task(
+        func=pygeoprocessing.warp_raster,
+        args=(
+            granule_path, granule_raster_info['pixel_size'],
+            clipped_raster_path, 'near'),
+        kwargs={'target_bb': target_bounding_box},
+        target_path_list=[clipped_raster_path],
+        dependent_task_list=[fetch_task],
+        task_name=f'clip {clipped_raster_path}')
+    """
+    png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.png'
+    tif_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif'
+
+    file_list_path = os.path.join(target_dir, 'band_list.txt')
+    with open(file_list_path, 'w') as file_list_file:
+        for granule_path in granule_path_list:
+            file_list_file.write(f'{granule_path}\n')
+
+    vrt_path = os.path.join(target_dir, 'band_stack.vrt')
+    LOGGER.debug(str(([
+            'gdalbuildvrt', '-separate', '-input_file_list', file_list_path,
+            vrt_path])))
+    vrt_task = task_graph.add_task(
+        func=subprocess.run,
+        args=([
+            'gdalbuildvrt', '-separate', '-input_file_list', file_list_path,
+            vrt_path],),
+        target_path_list=[vrt_path],
+        task_name=f'build vrt {png_path}')
+
+    warp_tif_task = task_graph.add_task(
+        func=subprocess.run,
+        args=([
+            'gdal_translate',
+            '-projwin',
+            str(target_bounding_box[0]),
+            str(target_bounding_box[3]),
+            str(target_bounding_box[2]),
+            str(target_bounding_box[1]),
+            '-of', 'PNG', vrt_path, tif_path],),
+        target_path_list=[tif_path],
+        dependent_task_list=[vrt_task],
+        task_name=f'warp {tif_path}')
+
+    warp_tif_task.join()
+    tif_raster = gdal.OpenEx(tif_path)
+    max_val = 0
+    max_val_array = [0, 0, 0]
+    for band_id in range(3):
+        tif_band = tif_raster.GetRasterBand(1+band_id)
+        array = tif_band.ReadAsArray()
+        max_val_array[band_id] = numpy.max(array) / 2**16 * 255
+    tif_raster = None
+
+    warp_png_task = task_graph.add_task(
+        func=subprocess.run,
+        args=([
+            'gdal_translate',
+            '-of', 'PNG',
+            '-scale_1', '0', str(max_val_array[0]),
+            '-scale_2', '0', str(max_val_array[1]),
+            '-scale_3', '0', str(max_val_array[2]),
+            tif_path, png_path],),
+        target_path_list=[png_path],
+        dependent_task_list=[vrt_task],
+        task_name=f'warp {png_path}')
+    warp_png_task.join()
+    png_path_list.append(png_path)
+    return png_path_list
 
 
 def extract_bounding_box(
@@ -399,6 +518,10 @@ def monitor_validation_database(validation_database_path):
         None.
 
     """
+    try:
+        os.makedirs(DAM_IMAGERY_DIR)
+    except OSError:
+        pass
     largest_key = -1
     with sqlite3.connect(validation_database_path) as val_db_conn:
         while True:
@@ -409,36 +532,77 @@ def monitor_validation_database(validation_database_path):
                     'FROM validation_table '
                     'INNER JOIN base_table on '
                     'validation_table.key = base_table.key '
-                    'WHERE id > ?;', (largest_key,)):
+                    'WHERE id > ? '
+                    'ORDER BY id ASC;', (largest_key,)):
                 (bb_bounds_json, metadata, validation_id,
                  database_id, source_key) = payload
 
-                unique_id = f'{database_id}:{source_key}'
+                unique_id = f'{database_id}-{source_key}'
                 LOGGER.info('processing %d', validation_id)
                 largest_key = max(largest_key, validation_id)
 
                 # fetch imagery list that intersects with the bounding box
                 # [minx,miny,maxx,maxy]
+                if bb_bounds_json == 'None':
+                    LOGGER.info('no bounding box for %s', unique_id)
+                    continue
                 bb_bounds = json.loads(bb_bounds_json.replace("'", '"'))
-                LOGGER.debug(bb_bounds[0])
-                bounding_box = [
-                    min(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
-                    min(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
-                    max(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
-                    max(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
-                ]
+                if bb_bounds is not None:
+                    LOGGER.debug(bb_bounds[0])
+                    bounding_box = [
+                        min(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
+                        min(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
+                        max(bb_bounds[0]['lng'], bb_bounds[1]['lng']),
+                        max(bb_bounds[0]['lat'], bb_bounds[1]['lat']),
+                    ]
 
-                imagry_path = get_dam_bounding_box_imagery(
-                    task_graph, unique_id, bounding_box, WORKSPACE_DIR,
-                    fetch_if_not_downloaded=False)
-                LOGGER.debug(imagry_path)
+                    imagery_path_list = get_dam_bounding_box_imagery_planet(
+                        task_graph, unique_id, bounding_box, WORKSPACE_DIR,
+                        fetch_if_not_downloaded=True)
+                    if imagery_path_list:
+                        for imagery_path in imagery_path_list:
+                            LOGGER.info(
+                                'copying %s to %s', imagery_path,
+                                DAM_IMAGERY_DIR)
+                            shutil.copy(imagery_path, DAM_IMAGERY_DIR)
+                    else:
+                        LOGGER.warn(
+                            'no valid imagery found for %s', unique_id)
+                else:
+                    LOGGER.info('no bounding box registered')
                 # test if it's valid (no black?)
                 # if not, save it and record in database?
 
             time.sleep(1)
 
 
+def length_of_degree_in_m(lat):
+    """Calculate length of degree given lat
+
+    Adapted from: https://gis.stackexchange.com/a/127327/2397
+
+    Parameters:
+        pixel_size (float): length of side of pixel in degrees.
+        lat (float): latitude of the center of the pixel. Note this
+            value +/- half the `pixel-size` must not exceed 90/-90 degrees
+            latitude or an invalid area will be calculated.
+
+    Returns:
+        Length of degree in m.
+
+    """
+    a = 6378137  # meters
+    b = 6356752.3142  # meters
+    e = numpy.sqrt(1-(b/a)**2)
+    zm = 1 - e*numpy.sin(numpy.radians(lat))
+    zp = 1 + e*numpy.sin(numpy.radians(lat))
+    return numpy.pi * b**2 * (
+        numpy.log(zp/zm) / (2*e) +
+        numpy.sin(numpy.radians(lat)) / (zp*zm)) / 360.
+
 if __name__ == '__main__':
-    task_graph = taskgraph.TaskGraph(WORKSPACE_DIR, -1, REPORTING_INTERVAL)
+    task_graph = taskgraph.TaskGraph(
+        WORKSPACE_DIR, -1,
+        reporting_interval=REPORTING_INTERVAL, tolerant_task_failure=False)
     build_index(task_graph)
     monitor_validation_database(data_validator.DATABASE_PATH)
