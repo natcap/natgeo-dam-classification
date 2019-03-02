@@ -146,17 +146,17 @@ def get_dam_bounding_box_imagery_planet(
                     granule_url = asset_result_json['visual']['location']
                     granule_path = os.path.join(
                         workspace_dir, f"{feature['id']}.tif")
-                    fetch_task = task_graph.add_task(
-                        func=urllib.request.urlretrieve,
-                        args=(granule_url, granule_path),
-                        target_path_list=[granule_path],
-                        task_name=f'fetch {granule_path}')
-                    fetch_task.join()
+                    if os.path.exists(granule_path):
+                        # already downloaded
+                        break
+                    # else download it
+                    session.urlretrieve(granule_url, granule_path)
                     break
                 else:
                     LOGGER.info("not ready yet %s waiting 1sec", asset_status)
                     time.sleep(1)
             break
+    # now clip and convert to png
     granule_raster_info = pygeoprocessing.get_raster_info(granule_path)
     wgs84_srs = osr.SpatialReference()
     wgs84_srs.ImportFromEPSG(4326)
@@ -199,20 +199,15 @@ def get_dam_bounding_box_imagery_planet(
         target_bounding_box[3]-target_bounding_box[1])
 
     png_path = os.path.join(workspace_dir, f"{feature['id']}_clip.png")
-    clip_tif_task = task_graph.add_task(
-        func=subprocess.run,
-        args=([
+    if not os.path.exists(png_path):
+        subprocess.run([
             'gdal_translate',
             '-projwin',
             str(target_bounding_box[0]),
             str(target_bounding_box[3]),
             str(target_bounding_box[2]),
             str(target_bounding_box[1]),
-            '-of', 'PNG', granule_path, png_path],),
-        target_path_list=[png_path],
-        task_name=f'warp {png_path}')
-    clip_tif_task.join()
-    sys.exit()
+            '-of', 'PNG', granule_path, png_path],)
     return [png_path]
 
 
