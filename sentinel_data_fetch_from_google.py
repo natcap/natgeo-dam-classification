@@ -140,7 +140,8 @@ def get_dam_bounding_box_imagery_planet(
                 workspace_dir, f"{feature['id']}.tif")
             LOGGER.info("scheduling download of %s", feature['id'])
             planet_asset_fetch_queue.put(
-                (granule_path, feature['id'], bounding_box, asset_url))
+                (granule_path, f"{feature['id']}_{dam_id}", bounding_box,
+                 asset_url))
             break
 
 
