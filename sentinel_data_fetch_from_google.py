@@ -275,7 +275,6 @@ def fetch_tile_and_bound_data(
         target_bounding_box[2]-target_bounding_box[0],
         target_bounding_box[3]-target_bounding_box[1])
 
-    png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.png'
     tif_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}.tif'
 
     file_list_path = os.path.join(target_dir, 'band_list.txt')
@@ -293,7 +292,7 @@ def fetch_tile_and_bound_data(
             'gdalbuildvrt', '-separate', '-input_file_list', file_list_path,
             vrt_path],),
         target_path_list=[vrt_path],
-        task_name=f'build vrt {png_path}')
+        task_name=f'build vrt {vrt_path}')
 
     warp_tif_task = task_graph.add_task(
         func=subprocess.run,
@@ -308,10 +307,22 @@ def fetch_tile_and_bound_data(
         target_path_list=[tif_path],
         dependent_task_list=[vrt_task],
         task_name=f'warp {tif_path}')
-
     warp_tif_task.join()
+
+    tif_raster = gdal.OpenEx(tif_path, gdal.OF_RASTER)
+    avg_val_list = []
+    for band_id in range(1, tif_raster.RasterCount+1):
+        band = tif_raster.GetRasterBand(1)
+        array = band.ReadAsArray()
+        avg_val_list.append(numpy.median(array))
+        band = None
+    tif_raster = None
+    avg_val = numpy.mean(avg_val_list)
+    if avg_val < 500 or avg_val > 3000:
+        # black image or too bright
+        return []
+
     tif_raster = gdal.OpenEx(tif_path)
-    max_val = 0
     max_val_array = [0, 0, 0]
     for band_id in range(3):
         tif_band = tif_raster.GetRasterBand(1+band_id)
@@ -319,14 +330,15 @@ def fetch_tile_and_bound_data(
         max_val_array[band_id] = numpy.max(array) / 2**16 * 255
     tif_raster = None
 
+    png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}_{avg_val}.png'
     warp_png_task = task_graph.add_task(
         func=subprocess.run,
         args=([
             'gdal_translate',
             '-of', 'PNG',
-            '-scale_1', '0', str(max_val_array[0]),
-            '-scale_2', '0', str(max_val_array[1]),
-            '-scale_3', '0', str(max_val_array[2]),
+            '-scale_1', '0', str(max_val_array[0]*0.7),
+            '-scale_2', '0', str(max_val_array[1]*0.4),
+            '-scale_3', '0', str(max_val_array[2]*0.4),
             tif_path, png_path],),
         target_path_list=[png_path],
         dependent_task_list=[vrt_task],
