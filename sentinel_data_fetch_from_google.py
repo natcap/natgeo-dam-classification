@@ -303,7 +303,7 @@ def fetch_tile_and_bound_data(
             str(target_bounding_box[3]),
             str(target_bounding_box[2]),
             str(target_bounding_box[1]),
-            '-of', 'PNG', vrt_path, tif_path],),
+            '-of', 'GTiff', vrt_path, tif_path],),
         target_path_list=[tif_path],
         dependent_task_list=[vrt_task],
         task_name=f'warp {tif_path}')
@@ -311,24 +311,20 @@ def fetch_tile_and_bound_data(
 
     tif_raster = gdal.OpenEx(tif_path, gdal.OF_RASTER)
     avg_val_list = []
+    percentile_list = []
     for band_id in range(1, tif_raster.RasterCount+1):
         band = tif_raster.GetRasterBand(1)
         array = band.ReadAsArray()
         avg_val_list.append(numpy.median(array))
+        percentile_list.append(
+            numpy.percentile(array, [5, 95]))
         band = None
     tif_raster = None
+    LOGGER.debug('percentile_list %s', percentile_list)
     avg_val = numpy.mean(avg_val_list)
-    if avg_val < 500 or avg_val > 3000:
+    if avg_val < 500:
         # black image or too bright
         return []
-
-    tif_raster = gdal.OpenEx(tif_path)
-    max_val_array = [0, 0, 0]
-    for band_id in range(3):
-        tif_band = tif_raster.GetRasterBand(1+band_id)
-        array = tif_band.ReadAsArray()
-        max_val_array[band_id] = numpy.max(array) / 2**16 * 255
-    tif_raster = None
 
     png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}_{avg_val}.png'
     warp_png_task = task_graph.add_task(
@@ -336,9 +332,9 @@ def fetch_tile_and_bound_data(
         args=([
             'gdal_translate',
             '-of', 'PNG',
-            '-scale_1', '0', str(max_val_array[0]*0.7),
-            '-scale_2', '0', str(max_val_array[1]*0.4),
-            '-scale_3', '0', str(max_val_array[2]*0.4),
+            '-scale_1', str(percentile_list[0][0]), str(percentile_list[0][1]), '0', str(65536),
+            '-scale_2', str(percentile_list[1][0]), str(percentile_list[1][1]), '0', str(65536),
+            '-scale_3', str(percentile_list[2][0]), str(percentile_list[2][1]), '0', str(65536),
             tif_path, png_path],),
         target_path_list=[png_path],
         dependent_task_list=[vrt_task],
