@@ -122,27 +122,35 @@ def get_dam_bounding_box_imagery_planet(
     session = requests.Session()
     session.auth = (os.environ['PL_API_KEY'], '')
 
-    search_result_json = session.post(
-        'https://api.planet.com/data/v1/quick-search',
-        json=stats_endpoint_request).json()
+    while True:
+        try:
+            search_result_json = session.post(
+                'https://api.planet.com/data/v1/quick-search',
+                json=stats_endpoint_request,
+                timeout=5).json()
+        except requests.Timeout:
+            LOGGER.exception('trying again')
 
     for feature in search_result_json['features']:
-        asset_url = (
-            f'https://api.planet.com/data/v1/item-types/'
-            f"REOrthoTile/items/{feature['id']}/assets")
-        asset_result_json = session.get(asset_url).json()
-        if 'visual' in asset_result_json:
-            item_activation_url = (
-                asset_result_json['visual']['_links']['activate'])
-            session.post(item_activation_url)
-            # request activation
-            granule_path = os.path.join(
-                workspace_dir, f"{feature['id']}.tif")
-            LOGGER.info("scheduling download of %s", feature['id'])
-            planet_asset_fetch_queue.put(
-                (granule_path, f"{feature['id']}_{dam_id}", bounding_box,
-                 asset_url))
-            break
+        try:
+            asset_url = (
+                f'https://api.planet.com/data/v1/item-types/'
+                f"REOrthoTile/items/{feature['id']}/assets")
+            asset_result_json = session.get(asset_url, timeout=5).json()
+            if 'visual' in asset_result_json:
+                item_activation_url = (
+                    asset_result_json['visual']['_links']['activate'])
+                session.post(item_activation_url, timeout=5)
+                # request activation
+                granule_path = os.path.join(
+                    workspace_dir, f"{feature['id']}.tif")
+                LOGGER.info("scheduling download of %s", feature['id'])
+                planet_asset_fetch_queue.put(
+                    (granule_path, f"{feature['id']}_{dam_id}", bounding_box,
+                     asset_url))
+                break
+        except requests.Timeout:
+            LOGGER.exception('trying again')
 
 
 def process_planet_asset_fetch_queue(
@@ -157,7 +165,7 @@ def process_planet_asset_fetch_queue(
     processing_queue = queue.Queue()
     should_stop = False
     while True:
-        time.sleep(.2)
+        time.sleep(1)
         try:
             payload = planet_asset_fetch_queue.get_nowait()
             if payload == 'STOP':
@@ -170,20 +178,27 @@ def process_planet_asset_fetch_queue(
                 if should_stop:
                     return
                 continue
-        granule_path, feature_id, bounding_box, asset_url = payload
-        LOGGER.debug('got a payload %s', payload)
-        asset_result_json = session.get(asset_url).json()
-        asset_status = asset_result_json['visual']['status']
-        LOGGER.debug('asset status %s', asset_status)
-        if asset_status != 'active':
-            LOGGER.info('not active, rescheduling')
+        try:
+            granule_path, feature_id, bounding_box, asset_url = payload
+            LOGGER.debug('got a payload %s', payload)
+            asset_result_json = session.get(
+                asset_url, timeout=5.0).json()
+            asset_status = asset_result_json['visual']['status']
+            LOGGER.debug('asset status %s', asset_status)
+            if asset_status != 'active':
+                LOGGER.info('not active, rescheduling')
+                processing_queue.put(payload)
+                continue
+            granule_url = asset_result_json['visual']['location']
+            granule_path = os.path.join(workspace_dir, f"{feature_id}.tif")
+            if not os.path.exists(granule_path):
+                LOGGER.debug('retrieve %s', granule_path)
+                urllib.request.urlretrieve(
+                    granule_url, granule_path)
+        except requests.timeout:
+            LOGGER.exception('trying again')
             processing_queue.put(payload)
             continue
-        granule_url = asset_result_json['visual']['location']
-        granule_path = os.path.join(workspace_dir, f"{feature_id}.tif")
-        if not os.path.exists(granule_path):
-            LOGGER.debug('retrieve %s', granule_path)
-            urllib.request.urlretrieve(granule_url, granule_path)
 
         png_path = os.path.join(workspace_dir, f"{feature_id}_clip.png")
         target_png_path = os.path.join(
@@ -293,11 +308,17 @@ def get_dam_bounding_box_imagery_sentinel(
 
             manifest_url = f'{url_prefix}/manifest.safe'
             manifest_path = os.path.join(granule_dir, 'manifest.safe')
-            # download the manifest
-            r = requests.head(manifest_url)
-            if r.status_code != requests.codes.ok:
-                return []
+
             if not os.path.exists(manifest_path):
+                # download the manifest
+                while True:
+                    try:
+                        r = requests.head(manifest_url, timeout=5)
+                        break
+                    except requests.Timeout:
+                        LOGGER.exception('timed out, trying again')
+                if r.status_code != requests.codes.ok:
+                    return []
                 urllib.request.urlretrieve(manifest_url, manifest_path)
             return fetch_tile_and_bound_data(
                 task_graph, manifest_path,
@@ -692,7 +713,7 @@ def monitor_validation_database(validation_database_path):
                         max(bb_bounds[0]['lng'], bb_bounds[1]['lng'])+lng_extension_deg,
                         max(bb_bounds[0]['lat'], bb_bounds[1]['lat'])+lat_extension_deg,
                     ]
-
+                    """
                     get_dam_bounding_box_imagery_planet(
                         task_graph, unique_id, bounding_box,
                         planet_workspace_dir,
@@ -711,7 +732,6 @@ def monitor_validation_database(validation_database_path):
                     else:
                         LOGGER.warn(
                             'no valid imagery found for %s', unique_id)
-                    """
                 else:
                     LOGGER.info('no bounding box registered')
                 # test if it's valid (no black?)
