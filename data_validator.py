@@ -83,6 +83,58 @@ def parse_shapefile(db_key, description_key, filter_tuple):
     return _parse_shapefile
 
 
+def parse_south_africa_database(exclude_filter_tuple):
+    def _parse_south_africa_database(base_path):
+        """Extract db key, description, and geom from base path.
+
+        Parameters:
+            base_path (str): path to a database, may be gdal vector, excel, or
+                more.
+
+        Returns:
+            a list of (base_db_key, description, geom) tuples from the data in
+            this database.
+
+        """
+        result_list = []
+        df = pandas.read_csv(base_path, encoding='latin1')
+        df = df.dropna(subset=[exclude_filter_tuple[0]])
+        if exclude_filter_tuple is not None:
+            LOGGER.debug(exclude_filter_tuple[0])
+            LOGGER.debug(df[exclude_filter_tuple[0]].str)
+            LOGGER.debug(
+                df[exclude_filter_tuple[0]].str.contains('|'.join(
+                    exclude_filter_tuple[1])))
+            df = df[~df[exclude_filter_tuple[0]].str.contains('|'.join(
+                exclude_filter_tuple[1]))]
+        result = df[
+                ['No of dam',
+                 'Name of dam',
+                 'Latitude deg',
+                 'Lat min',
+                 'Lat sec',
+                 'Longitude deg',
+                 'Long min',
+                 'Long sec']].to_dict('records')
+
+        # convert to result list and make wkt points
+        result_list = [
+            (index,
+             db['Name of dam'],
+             shapely.geometry.Point(
+                -(db['Latitude deg'] +
+                  db['Lat min']/60. +
+                  db['Lat sec']/3600.),
+                db['Longitude deg'] +
+                db['Long min']/60. +
+                db['Long sec']/3600.).wkt)
+            for index, db in enumerate(result)]
+        LOGGER.debug(result_list)
+        LOGGER.debug(len(result_list))
+        return result_list
+    return _parse_south_africa_database
+
+
 def parse_pandas(
         db_key, description_key, lat_lng_key_tuple, include_filter_tuple,
         exclude_filter_tuple, encoding, pandas_type):
@@ -167,6 +219,10 @@ GREATER_MEKONG_HYDROPOWER_DATABASE_URL = 'https://storage.googleapis.com/natcap-
 MEKONG_DAM_DATABASE_FROM_RAFA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/MekongDamDatabasefromRafa_cleaned_by_rps_md5_e9852db07e734884107ace82ef1c9c96.xlsx'
 MYANMAR_DAMS_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/myanmar_dams_md5_4a5e49a515d30ac0937c2a36b43dcdf8.zip'
 UHE_AMAZONIA_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/Base-UHE-AMAZONIA_md5_accd10ef136bc16d1e235e084c706e1e.csv'
+SOUTH_AFRICA_DATABASE_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/south_africa_database_filtered_by_RS_md5_41a5504f2dde78d63e7c5fdb17940afb.csv'
+GRAND_VERSION_1_3_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/GRanD_Version_1_3_md5_03968a0771b2981a36946848a9f2485c.zip'
+CADASTRO_URL = 'https://storage.googleapis.com/natcap-natgeo-dam-ecoshards/cadastroRSB2017_filtered_by_RS_md5_7a332684b686308280a2882926694e4f.csv'
+
 
 POINT_DAM_DATA_MAP_LIST = (
      ('GRAND', {
@@ -222,6 +278,39 @@ POINT_DAM_DATA_MAP_LIST = (
         'parse_function': parse_pandas(
             'NIDID', 'DAM_NAME', ('LONGITUDE', 'LATITUDE'),
             None, ('PURPOSES', ('N', 'D')), None, 'xlsx')
+    }),
+    ('Cadastro Database', {
+        'database_url': CADASTRO_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(
+                CADASTRO_URL)),
+        'parse_function': parse_pandas(
+            None, 'Barragem_Nome', ('Longitude_dec', 'Latitude_dec'),
+            None,
+            ('Uso_principal', (
+                "Contenção de resíduos industriais",
+                "Contenção de rejeitos de mineração")),
+            'latin1', 'csv')
+    }),
+    ('GRAND', {
+        'database_url': GRAND_VERSION_1_3_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, 'GRanD_Version_1_3/GRanD_dams_v1_3.shp'),
+        'parse_function': parse_shapefile(
+            'GRAND_ID', 'DAM_NAME', None),
+    }),
+    ('South Africa Database', {
+        'database_url': SOUTH_AFRICA_DATABASE_URL,
+        'database_expected_path': os.path.join(
+            WORKSPACE_DIR, os.path.basename(
+                SOUTH_AFRICA_DATABASE_URL)),
+        'parse_function': parse_south_africa_database(
+            ('Purpose', (
+                "INDUSTRIAL RESIDUE",
+                "MINE RESIDUE",
+                "ASH RESIDUE"
+                "OXIDATION/EVAPORATION"
+                "OXIDATION / EVAPORATION")))
     }),
 )
 
