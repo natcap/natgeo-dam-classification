@@ -658,7 +658,12 @@ def monitor_validation_database(validation_database_path):
     sentinel_workspace_dir = os.path.join(WORKSPACE_DIR, 'sentinel')
 
     with sqlite3.connect(validation_database_path) as val_db_conn:
+        last_time = time.time()
         while True:
+            current_time = time.time()
+            if current_time-last_time < 1.0:
+                time.sleep(current_time-last_time)
+            last_time = time.time()
             print('trying new select')
             for payload in val_db_conn.execute(
                     'SELECT bounding_box_bounds, metadata, id, '
