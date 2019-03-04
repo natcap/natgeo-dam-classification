@@ -122,12 +122,12 @@ def parse_south_africa_database(exclude_filter_tuple):
             (index,
              db['Name of dam'],
              shapely.geometry.Point(
-                -(db['Latitude deg'] +
-                  db['Lat min']/60. +
-                  db['Lat sec']/3600.),
                 db['Longitude deg'] +
                 db['Long min']/60. +
-                db['Long sec']/3600.).wkt)
+                db['Long sec']/3600.,
+                -(db['Latitude deg'] +
+                  db['Lat min']/60. +
+                  db['Lat sec']/3600.)).wkt)
             for index, db in enumerate(result)]
         LOGGER.debug(result_list)
         LOGGER.debug(len(result_list))

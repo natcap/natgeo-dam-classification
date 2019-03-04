@@ -639,6 +639,7 @@ def monitor_validation_database(validation_database_path):
     except OSError:
         pass
 
+    """
     planet_asset_fetch_queue = queue.Queue(100)
     planet_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'planet')
     planet_workspace_dir = os.path.join(WORKSPACE_DIR, 'planet')
@@ -648,6 +649,7 @@ def monitor_validation_database(validation_database_path):
             planet_asset_fetch_queue, planet_imagery_dir,
             planet_workspace_dir))
     process_planet_asset_fetch_queue_thread.start()
+    """
     largest_key = -1
 
     sentinel_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'sentinel')
@@ -702,6 +704,9 @@ def monitor_validation_database(validation_database_path):
                         "%s %s %s %s %s", center_lat, lat_len_deg,
                         lng_len_deg, lat_len_m, lng_len_m)
 
+                    if lat_len_m == 0 or lng_len_m == 0:
+                        LOGGER.debug("got some zero length bounding_box, skipping")
+                        continue
                     lat_m_to_deg = lat_len_deg / lat_len_m
                     lng_m_to_deg = lng_len_deg / lng_len_m
 
