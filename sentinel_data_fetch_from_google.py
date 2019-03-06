@@ -257,20 +257,20 @@ def process_planet_asset_fetch_queue(
 
 
 def get_dam_bounding_box_imagery_sentinel(
-        task_graph, dam_id, bounding_box, workspace_dir):
+        task_graph, dam_id, image_bounding_box, workspace_dir):
     """Extract bounding box of grand sentinel imagery around point.
 
     Parameters:
         task_graph (TaskGraph): taskgraph for global scheduling.
         dam_id (str): unique identifier for dam
-        bounding_box (list): [xmin, ymin, xmax, ymax] in WGS84 coords.
+        image_bounding_box (list): [xmin, ymin, xmax, ymax] in WGS84 coords.
         workspace_dir (str): path to directory to write results into.
 
     Returns:
         List of local file path images.
 
     """
-    LOGGER.debug(bounding_box)
+    LOGGER.debug(image_bounding_box)
     with sqlite3.connect(SENTINEL_SQLITE_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -285,8 +285,8 @@ def get_dam_bounding_box_imagery_sentinel(
             '   CLOUD_COVER ASC,'
             '   SENSING_TIME DESC '
             'LIMIT 1;',
-            (bounding_box[3], bounding_box[1],
-             bounding_box[0], bounding_box[2]))
+            (image_bounding_box[3], image_bounding_box[1],
+             image_bounding_box[0], image_bounding_box[2]))
 
         for result in cursor:
             # make subidrectories so we don't get swamped with directories
@@ -322,7 +322,7 @@ def get_dam_bounding_box_imagery_sentinel(
                 urllib.request.urlretrieve(manifest_url, manifest_path)
             return fetch_tile_and_bound_data(
                 task_graph, manifest_path,
-                url_prefix, dam_id, bounding_box, granule_dir)
+                url_prefix, dam_id, image_bounding_box, granule_dir)
 
 
 def fetch_tile_and_bound_data(
@@ -675,7 +675,7 @@ def monitor_validation_database(validation_database_path):
                     'validation_table.key = base_table.key '
                     'WHERE id > ? '
                     'ORDER BY id ASC;', (largest_key,)):
-                (bb_bounds_json, metadata, validation_id,
+                (dam_bb_bounds_json, metadata, validation_id,
                  database_id, source_key) = payload
 
                 unique_id = f'{database_id}-{source_key}'
@@ -684,16 +684,16 @@ def monitor_validation_database(validation_database_path):
 
                 # fetch imagery list that intersects with the bounding box
                 # [minx,miny,maxx,maxy]
-                if bb_bounds_json == 'None':
+                if dam_bb_bounds_json == 'None':
                     LOGGER.info('no bounding box for %s', unique_id)
                     continue
-                bb_bounds = json.loads(bb_bounds_json.replace("'", '"'))
-                if bb_bounds is not None:
-                    LOGGER.debug(bb_bounds[0])
+                dam_bb_bounds = json.loads(dam_bb_bounds_json.replace("'", '"'))
+                if dam_bb_bounds is not None:
+                    LOGGER.debug(dam_bb_bounds[0])
 
-                    lat_len_deg = abs(bb_bounds[0]['lat']-bb_bounds[1]['lat'])
-                    lng_len_deg = abs(bb_bounds[0]['lng']-bb_bounds[1]['lng'])
-                    center_lat = (bb_bounds[0]['lat']+bb_bounds[1]['lat'])/2
+                    lat_len_deg = abs(dam_bb_bounds[0]['lat']-dam_bb_bounds[1]['lat'])
+                    lng_len_deg = abs(dam_bb_bounds[0]['lng']-dam_bb_bounds[1]['lng'])
+                    center_lat = (dam_bb_bounds[0]['lat']+dam_bb_bounds[1]['lat'])/2
 
                     lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(
                         center_lat)
@@ -717,21 +717,25 @@ def monitor_validation_database(validation_database_path):
                     LOGGER.debug(
                         '%s %s %s %s', lat_extension_deg, lng_extension_deg,
                         lat_extension_m, lng_extension_m)
-                    bounding_box = [
-                        min(bb_bounds[0]['lng'], bb_bounds[1]['lng'])-lng_extension_deg,
-                        min(bb_bounds[0]['lat'], bb_bounds[1]['lat'])-lat_extension_deg,
-                        max(bb_bounds[0]['lng'], bb_bounds[1]['lng'])+lng_extension_deg,
-                        max(bb_bounds[0]['lat'], bb_bounds[1]['lat'])+lat_extension_deg,
+                    image_bounding_box = [
+                        min(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])-lng_extension_deg,
+                        min(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])-lat_extension_deg,
+                        max(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])+lng_extension_deg,
+                        max(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])+lat_extension_deg,
                     ]
+                    image_centroid_lat = (
+                        image_bounding_box[1]+image_bounding_box[3]) / 2.0
+                    image_centroid_lng = (
+                        image_bounding_box[0]+image_bounding_box[2]) / 2.0
                     """
                     get_dam_bounding_box_imagery_planet(
-                        task_graph, unique_id, bounding_box,
+                        task_graph, unique_id, image_bounding_box,
                         planet_workspace_dir,
                         planet_asset_fetch_queue)
                     time.sleep(0.4)
                     """
                     imagery_path_list = get_dam_bounding_box_imagery_sentinel(
-                        task_graph, unique_id, bounding_box,
+                        task_graph, unique_id, image_bounding_box,
                         sentinel_workspace_dir)
                     if imagery_path_list:
                         for imagery_path in imagery_path_list:
