@@ -40,6 +40,9 @@ SENTINEL_CSV_BUCKET_ID_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
 SENTINEL_CSV_GZ_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
 SENTINEL_SQLITE_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.db')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
+SEARCH_BLOCK_SIZE = 500
+MIN_SURFACE_WATER = 20
+MAX_SURFACE_WATER = 80
 REPORTING_INTERVAL = 5.0
 POLL_RATE = 1.0  # wait this many seconds for polling changes in the database
 LOGGER = logging.getLogger(__name__)
@@ -712,12 +715,14 @@ def monitor_validation_database(validation_database_path):
             if dam_bb_bounds is not None:
                 LOGGER.debug(dam_bb_bounds[0])
 
-                lat_len_deg = abs(dam_bb_bounds[0]['lat']-dam_bb_bounds[1]['lat'])
-                lng_len_deg = abs(dam_bb_bounds[0]['lng']-dam_bb_bounds[1]['lng'])
-                center_lat = (dam_bb_bounds[0]['lat']+dam_bb_bounds[1]['lat'])/2
+                lat_len_deg = abs(
+                    dam_bb_bounds[0]['lat']-dam_bb_bounds[1]['lat'])
+                lng_len_deg = abs(
+                    dam_bb_bounds[0]['lng']-dam_bb_bounds[1]['lng'])
+                center_lat = (
+                    dam_bb_bounds[0]['lat']+dam_bb_bounds[1]['lat']) / 2
 
-                lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(
-                    center_lat)
+                lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(center_lat)
                 lat_len_m = lat_len_deg * lat_d_to_m
                 lng_len_m = lng_len_deg * lng_d_to_m
 
@@ -744,6 +749,10 @@ def monitor_validation_database(validation_database_path):
                     max(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])+lng_extension_deg,
                     max(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])+lat_extension_deg,
                 ]
+                image_north_lat = image_bounding_box[3]
+                image_south_lat = image_bounding_box[1]
+                image_west_lon = image_bounding_box[2]
+                image_east_lon = image_bounding_box[0]
                 """
                 get_dam_bounding_box_imagery_planet(
                     task_graph, unique_id, image_bounding_box,
@@ -760,24 +769,6 @@ def monitor_validation_database(validation_database_path):
                             'copying %s to %s', imagery_path,
                             sentinel_imagery_dir)
                         shutil.copy(imagery_path, sentinel_imagery_dir)
-                        # TODO: here's where we add the call to store to the
-                        #       database
-                        """
-                        validation_id INTEGER NOT NULL PRIMARY KEY,
-                        image_north_lat FLOAT NOT NULL,
-                        image_south_lat FLOAT NOT NULL,
-                        image_west_lon FLOAT NOT NULL,
-                        image_east_lon FLOAT NOT NULL,
-                        dam_north_lat FLOAT,
-                        dam_south_lat FLOAT,
-                        dam_west_lng FLOAT,
-                        dam_east_lng FLOAT,
-                        image_filename TEXT NOT NULL
-                        """
-                        image_north_lat = image_bounding_box[3]
-                        image_south_lat = image_bounding_box[1]
-                        image_west_lon = image_bounding_box[2]
-                        image_east_lon = image_bounding_box[0]
                         dam_north_lat = max(
                             dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])
                         dam_south_lat = min(
@@ -800,10 +791,133 @@ def monitor_validation_database(validation_database_path):
                 else:
                     LOGGER.warn(
                         'no valid imagery found for %s', unique_id)
-            else:
-                LOGGER.info('no bounding box registered')
-            # test if it's valid (no black?)
-            # if not, save it and record in database?
+
+                not_a_dam_index = 0
+                while True:
+                    not_a_dam_id = f'{unique_id}_nodam_{not_a_dam_index}'
+                    lat_int = int(image_north_lat)
+                    lng_int = int(image_west_lon)
+                    surface_water_tif_url = (
+                        f'''http://storage.googleapis.com/'''
+                        f'''global-surface-water/downloads/occurrence/'''
+                        f'''occurrence_{
+                            abs(floor_down(lng_int))}{
+                            'E' if lng_int > 0 else 'W'}_{
+                            abs(floor_down(lat_int))}{
+                            'N' if lat_int > 0 else 'S'}.tif''')
+                    LOGGER.debug("going to fetch %s", surface_water_tif_url)
+                    surface_water_tif_path = os.path.join(
+                        WORKSPACE_DIR, os.path.basename(
+                            surface_water_tif_url))
+                    if not os.path.exists(surface_water_tif_path):
+                        LOGGER.info(
+                            'downloading %s' % surface_water_tif_url)
+                        urllib.request.urlretrieve(
+                            surface_water_tif_url, surface_water_tif_path)
+
+                    raster = gdal.OpenEx(surface_water_tif_path, gdal.OF_RASTER)
+                    band = raster.GetRasterBand(1)
+                    n_pixels = min(band.XSize, band.YSize)-SEARCH_BLOCK_SIZE
+                    LOGGER.debug('searching blocks of size %s in the range %s' % (
+                        SEARCH_BLOCK_SIZE, str((n_pixels, n_pixels))))
+                    while True:
+                        # pick a point that's within range on the base tile
+                        sample_point = numpy.random.randint(
+                            SEARCH_BLOCK_SIZE, n_pixels, (2,), dtype=numpy.int32)
+                        # pull a block around that point
+                        sample_block = band.ReadAsArray(
+                            xoff=float(sample_point[0]),
+                            yoff=float(sample_point[1]),
+                            win_xsize=SEARCH_BLOCK_SIZE,
+                            win_ysize=SEARCH_BLOCK_SIZE)
+                        # search for pixels there that include edge surface water
+                        partial_samples = numpy.argwhere(
+                            (sample_block > MIN_SURFACE_WATER) &
+                            (sample_block < MAX_SURFACE_WATER))
+                        # if we found any, break
+                        if partial_samples.size > 0:
+                            break
+                    random_sample_block_coord = partial_samples[
+                        numpy.random.randint(0, partial_samples.shape[0], 1)]
+                    # convert back to raster global coordinate
+                    global_coordinate = (
+                        sample_point[1]+random_sample_block_coord[0][0],
+                        sample_point[0]+random_sample_block_coord[0][1])
+                    gt = raster.GetGeoTransform()
+                    # convert back to lat/lng
+                    lng_coord = gt[0]+global_coordinate[1]*gt[1]
+                    lat_coord = gt[3]+global_coordinate[0]*gt[5]
+
+                    lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(
+                        lat_coord)
+                    lat_extension_deg = 500 / lat_d_to_m
+                    lng_extension_deg = 500 / lng_d_to_m
+                    LOGGER.debug(
+                        '%s %s %s %s', lng_coord, lat_coord, lat_extension_deg, lng_extension_deg)
+                    image_bounding_box = [
+                        lng_coord-lng_extension_deg,
+                        lat_coord-lat_extension_deg,
+                        lng_coord+lng_extension_deg,
+                        lat_coord+lat_extension_deg,
+                    ]
+                    """
+                    get_dam_bounding_box_imagery_planet(
+                        task_graph, not_a_dam_id, image_bounding_box,
+                        planet_workspace_dir,
+                        planet_asset_fetch_queue)
+                    time.sleep(0.4)
+                    """
+                    imagery_path_list = get_dam_bounding_box_imagery_sentinel(
+                        task_graph, not_a_dam_id, image_bounding_box,
+                        sentinel_workspace_dir)
+                    LOGGER.debug(
+                        "searched %s got %s", image_bounding_box,
+                        imagery_path_list)
+                    if imagery_path_list:
+                        for imagery_path in imagery_path_list:
+                            LOGGER.info(
+                                'copying %s to %s', imagery_path,
+                                sentinel_imagery_dir)
+                            shutil.copy(imagery_path, sentinel_imagery_dir)
+                            image_north_lat = image_bounding_box[3]
+                            image_south_lat = image_bounding_box[1]
+                            image_west_lon = image_bounding_box[2]
+                            image_east_lon = image_bounding_box[0]
+                            dam_north_lat = max(
+                                dam_bb_bounds[0]['lat'],
+                                dam_bb_bounds[1]['lat'])
+                            dam_south_lat = min(
+                                dam_bb_bounds[0]['lat'],
+                                dam_bb_bounds[1]['lat'])
+                            dam_west_lng = min(
+                                dam_bb_bounds[0]['lng'],
+                                dam_bb_bounds[1]['lng'])
+                            dam_east_lng = max(
+                                dam_bb_bounds[0]['lng'],
+                                dam_bb_bounds[1]['lng'])
+
+                            # this is the primary key for the bounding boxes
+                            largest_bounding_box_id += 1
+                            bounding_box_db_conn.execute(
+                                'INSERT INTO bounding_box_imagery_table '
+                                'VALUES ('
+                                'validation_id, image_north_lat, '
+                                'image_south_lat, image_west_lon, '
+                                'image_east_lon, imagery_path, '
+                                'largest_bounding_box_id);',
+                                (validation_id, image_north_lat,
+                                 image_south_lat, image_west_lon,
+                                 image_east_lon, imagery_path,
+                                 largest_bounding_box_id))
+                            bounding_box_db_conn.commit()
+                    else:
+                        LOGGER.warn(
+                            'no valid imagery found for %s', not_a_dam_id)
+                    break
+                else:
+                    LOGGER.info('no bounding box registered')
+                # test if it's valid (no black?)
+                # if not, save it and record in database?
     val_db_conn.close()
 
 
@@ -863,6 +977,15 @@ def build_database(database_path):
     with sqlite3.connect(database_path) as conn:
         cursor = conn.cursor()
         cursor.executescript(sql_create_table_command)
+
+
+def floor_down(val):
+    """Floor down to the nearest 10. 123 to 120, -119 to -120."""
+    if val > 0:
+        result = math.ceil(val / 10) * 10
+    else:
+        result = math.floor(val / 10) * 10
+    return int(numpy.sign(val) * result)
 
 
 if __name__ == '__main__':
