@@ -33,7 +33,9 @@ OPENER.addheaders = [('User-agent', 'Mozilla/5.0')]
 urllib.request.install_opener(OPENER)
 
 WORKSPACE_DIR = 'workspace_imagery'
-DAM_IMAGERY_DIR = os.path.join('images', 'dam_imagery')
+IMAGE_DIR = 'images'
+DAM_IMAGERY_DIR = os.path.join(IMAGE_DIR, 'dam_imagery')
+BOUNDING_BOX_DB_PATH = os.path.join(IMAGE_DIR, 'bounding_box_image_db.db')
 SENTINEL_CSV_BUCKET_ID_TUPLE = ('gcp-public-data-sentinel-2', 'index.csv.gz')
 SENTINEL_CSV_GZ_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
 SENTINEL_SQLITE_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.db')
@@ -651,6 +653,20 @@ def monitor_validation_database(validation_database_path):
     process_planet_asset_fetch_queue_thread.start()
     """
     largest_key = -1
+    bounding_box_db_conn = sqlite3.connect()
+    payload = bounding_box_db_conn.execute(
+        'SELECT id from validation_table '
+        'ORDER BY id DESC LIMIT TO 1;')
+    if payload is not None:
+        largest_key = int(payload[0])
+
+    image_id = -1
+    val_db_conn = sqlite3.connect(validation_database_path)
+    payload = val_db_conn.execute(
+        'SELECT image_id from bounding_box_imagery_table '
+        'ORDER BY image_id DESC LIMIT TO 1;')
+    if payload is not None:
+        image_id = int(payload[0])
 
     sentinel_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'sentinel')
     try:
@@ -658,98 +674,128 @@ def monitor_validation_database(validation_database_path):
     except:
         pass
     sentinel_workspace_dir = os.path.join(WORKSPACE_DIR, 'sentinel')
-
-    with sqlite3.connect(validation_database_path) as val_db_conn:
+    last_time = time.time()
+    while True:
+        current_time = time.time()
+        if current_time-last_time > 5.0:
+            time.sleep(current_time-last_time)
         last_time = time.time()
-        while True:
-            current_time = time.time()
-            if current_time-last_time < 1.0:
-                time.sleep(current_time-last_time)
-            last_time = time.time()
-            print('trying new select')
-            for payload in val_db_conn.execute(
-                    'SELECT bounding_box_bounds, metadata, id, '
-                    'base_table.database_id, base_table.source_key '
-                    'FROM validation_table '
-                    'INNER JOIN base_table on '
-                    'validation_table.key = base_table.key '
-                    'WHERE id > ? '
-                    'ORDER BY id ASC;', (largest_key,)):
-                (dam_bb_bounds_json, metadata, validation_id,
-                 database_id, source_key) = payload
+        LOGGER.info('trying new select')
+        for payload in val_db_conn.execute(
+                'SELECT bounding_box_bounds, metadata, id, '
+                'base_table.database_id, base_table.source_key '
+                'FROM validation_table '
+                'INNER JOIN base_table on '
+                'validation_table.key = base_table.key '
+                'WHERE id > ? '
+                'ORDER BY id ASC;', (largest_key,)):
+            (dam_bb_bounds_json, metadata, validation_id,
+             database_id, source_key) = payload
 
-                unique_id = f'{database_id}-{source_key}'
-                LOGGER.info('processing %d', validation_id)
-                largest_key = max(largest_key, validation_id)
+            unique_id = f'{database_id}-{source_key}'
+            LOGGER.info('processing %d', validation_id)
+            largest_key = max(largest_key, validation_id)
 
-                # fetch imagery list that intersects with the bounding box
-                # [minx,miny,maxx,maxy]
-                if dam_bb_bounds_json == 'None':
-                    LOGGER.info('no bounding box for %s', unique_id)
+            # fetch imagery list that intersects with the bounding box
+            # [minx,miny,maxx,maxy]
+            if dam_bb_bounds_json == 'None':
+                LOGGER.info('no bounding box for %s', unique_id)
+                continue
+            dam_bb_bounds = json.loads(dam_bb_bounds_json.replace("'", '"'))
+            if dam_bb_bounds is not None:
+                LOGGER.debug(dam_bb_bounds[0])
+
+                lat_len_deg = abs(dam_bb_bounds[0]['lat']-dam_bb_bounds[1]['lat'])
+                lng_len_deg = abs(dam_bb_bounds[0]['lng']-dam_bb_bounds[1]['lng'])
+                center_lat = (dam_bb_bounds[0]['lat']+dam_bb_bounds[1]['lat'])/2
+
+                lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(
+                    center_lat)
+                lat_len_m = lat_len_deg * lat_d_to_m
+                lng_len_m = lng_len_deg * lng_d_to_m
+
+                LOGGER.debug(
+                    "%s %s %s %s %s", center_lat, lat_len_deg,
+                    lng_len_deg, lat_len_m, lng_len_m)
+
+                if lat_len_m == 0 or lng_len_m == 0:
+                    LOGGER.debug("got some zero length bounding_box, skipping")
                     continue
-                dam_bb_bounds = json.loads(dam_bb_bounds_json.replace("'", '"'))
-                if dam_bb_bounds is not None:
-                    LOGGER.debug(dam_bb_bounds[0])
+                lat_m_to_deg = lat_len_deg / lat_len_m
+                lng_m_to_deg = lng_len_deg / lng_len_m
 
-                    lat_len_deg = abs(dam_bb_bounds[0]['lat']-dam_bb_bounds[1]['lat'])
-                    lng_len_deg = abs(dam_bb_bounds[0]['lng']-dam_bb_bounds[1]['lng'])
-                    center_lat = (dam_bb_bounds[0]['lat']+dam_bb_bounds[1]['lat'])/2
+                lat_extension_m = (500 - (lat_len_m/2))
+                lng_extension_m = (500 - (lng_len_m/2))
+                lat_extension_deg = lat_extension_m * lat_m_to_deg
+                lng_extension_deg = lng_extension_m * lng_m_to_deg
+                LOGGER.debug(
+                    '%s %s %s %s', lat_extension_deg, lng_extension_deg,
+                    lat_extension_m, lng_extension_m)
+                image_bounding_box = [
+                    min(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])-lng_extension_deg,
+                    min(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])-lat_extension_deg,
+                    max(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])+lng_extension_deg,
+                    max(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])+lat_extension_deg,
+                ]
+                """
+                get_dam_bounding_box_imagery_planet(
+                    task_graph, unique_id, image_bounding_box,
+                    planet_workspace_dir,
+                    planet_asset_fetch_queue)
+                time.sleep(0.4)
+                """
+                imagery_path_list = get_dam_bounding_box_imagery_sentinel(
+                    task_graph, unique_id, image_bounding_box,
+                    sentinel_workspace_dir)
+                if imagery_path_list:
+                    for imagery_path in imagery_path_list:
+                        LOGGER.info(
+                            'copying %s to %s', imagery_path,
+                            sentinel_imagery_dir)
+                        shutil.copy(imagery_path, sentinel_imagery_dir)
+                        # TODO: here's where we add the call to store to the
+                        #       database
+                        """
+                        image_id INTEGER NOT NULL PRIMARY KEY,
+                        image_north_lat FLOAT NOT NULL,
+                        image_south_lat FLOAT NOT NULL,
+                        image_west_lon FLOAT NOT NULL,
+                        image_east_lon FLOAT NOT NULL,
+                        dam_north_lat FLOAT,
+                        dam_south_lat FLOAT,
+                        dam_west_lng FLOAT,
+                        dam_east_lng FLOAT,
+                        image_filename TEXT NOT NULL
+                        """
+                        image_north_lat = image_bounding_box[3]
+                        image_south_lat = image_bounding_box[1]
+                        image_west_lon = image_bounding_box[2]
+                        image_east_lon = image_bounding_box[0]
+                        dam_north_lat = max(
+                            dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])
+                        dam_south_lat = min(
+                            dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])
+                        dam_west_lng = min(
+                            dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])
+                        dam_east_lng = max(
+                            dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])
 
-                    lat_d_to_m, lng_d_to_m = len_of_deg_to_lat_lng_m(
-                        center_lat)
-                    lat_len_m = lat_len_deg * lat_d_to_m
-                    lng_len_m = lng_len_deg * lng_d_to_m
-
-                    LOGGER.debug(
-                        "%s %s %s %s %s", center_lat, lat_len_deg,
-                        lng_len_deg, lat_len_m, lng_len_m)
-
-                    if lat_len_m == 0 or lng_len_m == 0:
-                        LOGGER.debug("got some zero length bounding_box, skipping")
-                        continue
-                    lat_m_to_deg = lat_len_deg / lat_len_m
-                    lng_m_to_deg = lng_len_deg / lng_len_m
-
-                    lat_extension_m = (500 - (lat_len_m/2))
-                    lng_extension_m = (500 - (lng_len_m/2))
-                    lat_extension_deg = lat_extension_m * lat_m_to_deg
-                    lng_extension_deg = lng_extension_m * lng_m_to_deg
-                    LOGGER.debug(
-                        '%s %s %s %s', lat_extension_deg, lng_extension_deg,
-                        lat_extension_m, lng_extension_m)
-                    image_bounding_box = [
-                        min(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])-lng_extension_deg,
-                        min(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])-lat_extension_deg,
-                        max(dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])+lng_extension_deg,
-                        max(dam_bb_bounds[0]['lat'], dam_bb_bounds[1]['lat'])+lat_extension_deg,
-                    ]
-                    image_centroid_lat = (
-                        image_bounding_box[1]+image_bounding_box[3]) / 2.0
-                    image_centroid_lng = (
-                        image_bounding_box[0]+image_bounding_box[2]) / 2.0
-                    """
-                    get_dam_bounding_box_imagery_planet(
-                        task_graph, unique_id, image_bounding_box,
-                        planet_workspace_dir,
-                        planet_asset_fetch_queue)
-                    time.sleep(0.4)
-                    """
-                    imagery_path_list = get_dam_bounding_box_imagery_sentinel(
-                        task_graph, unique_id, image_bounding_box,
-                        sentinel_workspace_dir)
-                    if imagery_path_list:
-                        for imagery_path in imagery_path_list:
-                            LOGGER.info(
-                                'copying %s to %s', imagery_path,
-                                sentinel_imagery_dir)
-                            shutil.copy(imagery_path, sentinel_imagery_dir)
-                    else:
-                        LOGGER.warn(
-                            'no valid imagery found for %s', unique_id)
+                        image_id += 1
+                        bounding_box_db_conn.execute(
+                            'INSERT INTO bounding_box_imagery_table '
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
+                            (image_id, image_north_lat, image_south_lat,
+                             image_west_lon, image_east_lon, dam_north_lat,
+                             dam_south_lat, dam_west_lng, dam_east_lng,
+                             imagery_path))
                 else:
-                    LOGGER.info('no bounding box registered')
-                # test if it's valid (no black?)
-                # if not, save it and record in database?
+                    LOGGER.warn(
+                        'no valid imagery found for %s', unique_id)
+            else:
+                LOGGER.info('no bounding box registered')
+            # test if it's valid (no black?)
+            # if not, save it and record in database?
+    val_db_conn.close()
 
 
 def len_of_deg_to_lat_lng_m(center_lat):
@@ -785,9 +831,34 @@ def len_of_deg_to_lat_lng_m(center_lat):
     return (latlen, longlen)
 
 
+def build_database(database_path):
+    """Create the bounding box table."""
+    sql_create_table_command = (
+        """
+        CREATE TABLE IF NOT EXISTS bounding_box_imagery_table (
+            image_id INTEGER NOT NULL PRIMARY KEY,
+            image_north_lat FLOAT NOT NULL,
+            image_south_lat FLOAT NOT NULL,
+            image_west_lon FLOAT NOT NULL,
+            image_east_lon FLOAT NOT NULL,
+            dam_north_lat FLOAT,
+            dam_south_lat FLOAT,
+            dam_west_lng FLOAT,
+            dam_east_lng FLOAT,
+            image_filename TEXT NOT NULL
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS bounding_box_imagery_key
+        ON bounding_box_imagery_table (image_id);
+        """)
+    with sqlite3.connect(database_path) as conn:
+        cursor = conn.cursor()
+        cursor.executescript(sql_create_table_command)
+
+
 if __name__ == '__main__':
     task_graph = taskgraph.TaskGraph(
         WORKSPACE_DIR, -1,
         reporting_interval=REPORTING_INTERVAL)
     build_index(task_graph)
+    build_database(BOUNDING_BOX_DB_PATH)
     monitor_validation_database(data_validator.DATABASE_PATH)
