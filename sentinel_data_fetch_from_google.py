@@ -959,7 +959,7 @@ def build_database(database_path):
     sql_create_table_command = (
         """
         CREATE TABLE IF NOT EXISTS bounding_box_imagery_table (
-            validation_id INTEGER NOT NULL PRIMARY KEY,
+            validation_id INTEGER NOT NULL,
             image_north_lat FLOAT NOT NULL,
             image_south_lat FLOAT NOT NULL,
             image_west_lon FLOAT NOT NULL,
@@ -969,10 +969,12 @@ def build_database(database_path):
             dam_west_lng FLOAT,
             dam_east_lng FLOAT,
             image_filename TEXT NOT NULL,
-            bounding_box_id INTEGER NOT NULL
+            bounding_box_id INTEGER NOT NULL PRIMARY KEY
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS bounding_box_imagery_key
+        CREATE UNIQUE INDEX IF NOT EXISTS validation_key
         ON bounding_box_imagery_table (validation_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS bounding_box_imagery_key
+        ON bounding_box_imagery_table (bounding_box_id);
         """)
     with sqlite3.connect(database_path) as conn:
         cursor = conn.cursor()
