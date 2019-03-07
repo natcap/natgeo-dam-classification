@@ -900,14 +900,11 @@ def monitor_validation_database(validation_database_path):
                             largest_bounding_box_id += 1
                             bounding_box_db_conn.execute(
                                 'INSERT INTO bounding_box_imagery_table '
-                                'VALUES ('
-                                'validation_id, image_north_lat, '
-                                'image_south_lat, image_west_lon, '
-                                'image_east_lon, imagery_path, '
-                                'largest_bounding_box_id);',
+                                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);'
                                 (validation_id, image_north_lat,
                                  image_south_lat, image_west_lon,
-                                 image_east_lon, imagery_path,
+                                 image_east_lon, None, None, None, None,
+                                 imagery_path,
                                  largest_bounding_box_id))
                             bounding_box_db_conn.commit()
                     else:
