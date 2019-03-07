@@ -41,6 +41,7 @@ SENTINEL_CSV_GZ_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.csv.gz')
 SENTINEL_SQLITE_PATH = os.path.join(WORKSPACE_DIR, 'sentinel_index.db')
 IAM_TOKEN_PATH = 'ecoshard-202992-key.json'
 REPORTING_INTERVAL = 5.0
+POLL_RATE = 1.0  # wait this many seconds for polling changes in the database
 LOGGER = logging.getLogger(__name__)
 
 
@@ -434,8 +435,9 @@ def fetch_tile_and_bound_data(
     tif_raster = None
     LOGGER.debug('percentile_list %s', percentile_list)
     avg_val = numpy.mean(avg_val_list)
-    if avg_val < 500 or avg_val > 3000:
+    if avg_val < 500 or avg_val > 1800:
         # black image or too bright
+        LOGGER.debug('black image or too bright %f', avg_val)
         return []
 
     png_path = f'{os.path.splitext(granule_path)[0]}_{unique_id}_{avg_val}.png'
@@ -652,21 +654,14 @@ def monitor_validation_database(validation_database_path):
             planet_workspace_dir))
     process_planet_asset_fetch_queue_thread.start()
     """
-    largest_key = -1
-    bounding_box_db_conn = sqlite3.connect()
-    payload = bounding_box_db_conn.execute(
-        'SELECT id from validation_table '
-        'ORDER BY id DESC LIMIT TO 1;')
+    largest_bounding_box_id = -1
+    bounding_box_db_conn = sqlite3.connect(BOUNDING_BOX_DB_PATH)
+    cursor = bounding_box_db_conn.execute(
+        'SELECT bounding_box_id from bounding_box_imagery_table '
+        'ORDER BY bounding_box_id DESC LIMIT 1;')
+    payload = cursor.fetchone()
     if payload is not None:
-        largest_key = int(payload[0])
-
-    image_id = -1
-    val_db_conn = sqlite3.connect(validation_database_path)
-    payload = val_db_conn.execute(
-        'SELECT image_id from bounding_box_imagery_table '
-        'ORDER BY image_id DESC LIMIT TO 1;')
-    if payload is not None:
-        image_id = int(payload[0])
+        largest_bounding_box_id = int(payload[0])
 
     sentinel_imagery_dir = os.path.join(DAM_IMAGERY_DIR, 'sentinel')
     try:
@@ -675,12 +670,23 @@ def monitor_validation_database(validation_database_path):
         pass
     sentinel_workspace_dir = os.path.join(WORKSPACE_DIR, 'sentinel')
     last_time = time.time()
+    largest_validation_id = -1
+    cursor = bounding_box_db_conn.execute(
+        'SELECT validation_id from bounding_box_imagery_table '
+        'ORDER BY validation_id DESC LIMIT 1;')
+    payload = cursor.fetchone()
+    if payload is not None:
+        largest_validation_id = int(payload[0])
+    val_db_conn = sqlite3.connect(validation_database_path)
     while True:
         current_time = time.time()
-        if current_time-last_time > 5.0:
-            time.sleep(current_time-last_time)
+        if current_time-last_time < POLL_RATE:
+            time.sleep(POLL_RATE-(current_time-last_time))
         last_time = time.time()
-        LOGGER.info('trying new select')
+        LOGGER.info(
+            'trying new select with largest_validation_id=%d '
+            'largest_bounding_box_id=%d',
+            largest_validation_id, largest_bounding_box_id)
         for payload in val_db_conn.execute(
                 'SELECT bounding_box_bounds, metadata, id, '
                 'base_table.database_id, base_table.source_key '
@@ -688,13 +694,14 @@ def monitor_validation_database(validation_database_path):
                 'INNER JOIN base_table on '
                 'validation_table.key = base_table.key '
                 'WHERE id > ? '
-                'ORDER BY id ASC;', (largest_key,)):
+                'ORDER BY id ASC;', (largest_validation_id,)):
             (dam_bb_bounds_json, metadata, validation_id,
              database_id, source_key) = payload
 
             unique_id = f'{database_id}-{source_key}'
             LOGGER.info('processing %d', validation_id)
-            largest_key = max(largest_key, validation_id)
+            largest_validation_id = max(
+                largest_validation_id, validation_id)
 
             # fetch imagery list that intersects with the bounding box
             # [minx,miny,maxx,maxy]
@@ -756,7 +763,7 @@ def monitor_validation_database(validation_database_path):
                         # TODO: here's where we add the call to store to the
                         #       database
                         """
-                        image_id INTEGER NOT NULL PRIMARY KEY,
+                        validation_id INTEGER NOT NULL PRIMARY KEY,
                         image_north_lat FLOAT NOT NULL,
                         image_south_lat FLOAT NOT NULL,
                         image_west_lon FLOAT NOT NULL,
@@ -780,14 +787,16 @@ def monitor_validation_database(validation_database_path):
                         dam_east_lng = max(
                             dam_bb_bounds[0]['lng'], dam_bb_bounds[1]['lng'])
 
-                        image_id += 1
+                        # this is the primary key for the bounding boxes
+                        largest_bounding_box_id += 1
                         bounding_box_db_conn.execute(
                             'INSERT INTO bounding_box_imagery_table '
-                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
-                            (image_id, image_north_lat, image_south_lat,
+                            'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
+                            (validation_id, image_north_lat, image_south_lat,
                              image_west_lon, image_east_lon, dam_north_lat,
                              dam_south_lat, dam_west_lng, dam_east_lng,
-                             imagery_path))
+                             imagery_path, largest_bounding_box_id))
+                        bounding_box_db_conn.commit()
                 else:
                     LOGGER.warn(
                         'no valid imagery found for %s', unique_id)
@@ -836,7 +845,7 @@ def build_database(database_path):
     sql_create_table_command = (
         """
         CREATE TABLE IF NOT EXISTS bounding_box_imagery_table (
-            image_id INTEGER NOT NULL PRIMARY KEY,
+            validation_id INTEGER NOT NULL PRIMARY KEY,
             image_north_lat FLOAT NOT NULL,
             image_south_lat FLOAT NOT NULL,
             image_west_lon FLOAT NOT NULL,
@@ -845,10 +854,11 @@ def build_database(database_path):
             dam_south_lat FLOAT,
             dam_west_lng FLOAT,
             dam_east_lng FLOAT,
-            image_filename TEXT NOT NULL
+            image_filename TEXT NOT NULL,
+            bounding_box_id INTEGER NOT NULL
         );
         CREATE UNIQUE INDEX IF NOT EXISTS bounding_box_imagery_key
-        ON bounding_box_imagery_table (image_id);
+        ON bounding_box_imagery_table (validation_id);
         """)
     with sqlite3.connect(database_path) as conn:
         cursor = conn.cursor()
