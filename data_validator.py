@@ -1,4 +1,5 @@
 """Flask app to validata imagery and point locations."""
+import queue
 import re
 import zipfile
 import json
@@ -570,6 +571,18 @@ def update_dam_data():
     try:
         LOGGER.debug('got a post')
         payload = json.loads(flask.request.data.decode('utf-8'))
+        VALIDATION_INSERT_QUEUE.put(
+            (payload, flask.session['username']))
+        return flask.jsonify(success=True)
+    except:
+        LOGGER.exception("big error")
+        return flask.jsonify(success=False)
+
+
+def validation_queue_worker():
+    """Process validation queue."""
+    while True:
+        payload, username = VALIDATION_INSERT_QUEUE.get()
         LOGGER.debug(payload)
         bounding_box_bounds = None
         if 'bounding_box_bounds' in payload:
@@ -586,13 +599,9 @@ def update_dam_data():
                     'VALUES (?, ?, ?, ?, ?, ?);',
                     (str(bounding_box_bounds), payload['point_id'],
                      json.dumps(payload['metadata']),
-                     flask.session['username'],
+                     username,
                      str(datetime.datetime.utcnow()),
                      max_validation_id+1))
-        return flask.jsonify(success=True)
-    except:
-        LOGGER.exception("big error")
-        return flask.jsonify(success=False)
 
 
 @APP.after_request
@@ -701,6 +710,10 @@ def download_and_unzip(url, target_path, token_file):
 if __name__ == '__main__':
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
+    VALIDATION_INSERT_QUEUE = queue.Queue()
+    validation_thread = threading.Thread(
+        target=validation_queue_worker)
+    validation_thread.start()
     DB_LOCK = threading.Lock()
     VISITED_POINT_ID_TIMESTAMP_MAP_LOCK = threading.Lock()
     complete_token_path = os.path.join(os.path.dirname(

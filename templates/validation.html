@@ -260,6 +260,8 @@
     });
 
     $('#nextpoint').click(function (e) {
+        $('#nextpoint').prop('disabled',true).css('opacity',0.5);
+        $('#nextpoint').html('Submitting...');
         post_to_server(e);
     });
 
