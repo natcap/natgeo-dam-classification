@@ -810,8 +810,14 @@ def monitor_validation_database(validation_database_path):
                     if not os.path.exists(surface_water_tif_path):
                         LOGGER.info(
                             'downloading %s' % surface_water_tif_url)
-                        urllib.request.urlretrieve(
-                            surface_water_tif_url, surface_water_tif_path)
+                        try:
+                            urllib.request.urlretrieve(
+                                surface_water_tif_url, surface_water_tif_path)
+                        except:
+                            LOGGER.exception(
+                                'failure downloading %s' %
+                                surface_water_tif_url)
+                            break
 
                     raster = gdal.OpenEx(surface_water_tif_path, gdal.OF_RASTER)
                     band = raster.GetRasterBand(1)
