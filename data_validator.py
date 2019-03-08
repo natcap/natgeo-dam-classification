@@ -333,22 +333,40 @@ def favicon():
 def get_unvalidated_point():
     """Get a point that has not been validated."""
     LOGGER.debug('trying to get an unvalidated point')
+    point_id_to_process = None
     try:
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    'SELECT key '
-                    'FROM base_table '
-                    'WHERE key not in (SELECT key from validation_table) '
-                    'ORDER BY RANDOM() LIMIT 1;')
+                # Try to get an unvalidated non NID point
                 flush_visited_point_id_timestamp()
+                # Lisa wants to do the us national inventory of dams last
+                cursor.execute(
+                    "SELECT key "
+                    "FROM base_table "
+                    "WHERE key not in (SELECT key from validation_table) AND "
+                    "database_id != 'US National Inventory of Dams' "
+                    "ORDER BY RANDOM();")
                 with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
                     for payload in cursor:
                         unvalidated_point_id = payload[0]
                         if unvalidated_point_id not in (
                                 VISITED_POINT_ID_TIMESTAMP_MAP):
+                            point_id_to_process = unvalidated_point_id
                             break
+                if point_id_to_process is None:
+                    LOGGER.debug('must have nothing but NID left.')
+                    cursor.execute(
+                        'SELECT key '
+                        'FROM base_table '
+                        'WHERE key not in (SELECT key from validation_table) '
+                        'ORDER BY RANDOM();')
+                    with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
+                        for payload in cursor:
+                            unvalidated_point_id = payload[0]
+                            if unvalidated_point_id not in (
+                                    VISITED_POINT_ID_TIMESTAMP_MAP):
+                                point_id_to_process = unvalidated_point_id
         return process_point(unvalidated_point_id)
     except:
         LOGGER.exception('exception in unvalidated')
