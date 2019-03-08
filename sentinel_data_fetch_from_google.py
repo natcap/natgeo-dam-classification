@@ -786,7 +786,7 @@ def monitor_validation_database(validation_database_path):
                             (validation_id, image_north_lat, image_south_lat,
                              image_west_lon, image_east_lon, dam_north_lat,
                              dam_south_lat, dam_west_lng, dam_east_lng,
-                             imagery_path, largest_bounding_box_id))
+                             sentinel_imagery_dir, largest_bounding_box_id))
                         bounding_box_db_conn.commit()
                 else:
                     LOGGER.warn(
