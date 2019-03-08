@@ -824,6 +824,7 @@ def monitor_validation_database(validation_database_path):
                     n_pixels = min(band.XSize, band.YSize)-SEARCH_BLOCK_SIZE
                     LOGGER.debug('searching blocks of size %s in the range %s' % (
                         SEARCH_BLOCK_SIZE, str((n_pixels, n_pixels))))
+                    tests = 10
                     while True:
                         # pick a point that's within range on the base tile
                         sample_point = numpy.random.randint(
@@ -841,6 +842,13 @@ def monitor_validation_database(validation_database_path):
                         # if we found any, break
                         if partial_samples.size > 0:
                             break
+                        else:
+                            tests -= 1
+                            if tests == 0:
+                                break
+                    if tests == 0:
+                        # we couldn't find a hit, so just give up
+                        break
                     random_sample_block_coord = partial_samples[
                         numpy.random.randint(0, partial_samples.shape[0], 1)]
                     # convert back to raster global coordinate
