@@ -317,15 +317,10 @@ def get_dam_bounding_box_imagery_sentinel(
 
             if not os.path.exists(manifest_path):
                 # download the manifest
-                while True:
-                    try:
-                        r = requests.head(manifest_url, timeout=5)
-                        break
-                    except requests.Timeout:
-                        LOGGER.exception('timed out, trying again')
-                if r.status_code != requests.codes.ok:
+                try:
+                    urllib.request.urlretrieve(manifest_url, manifest_path)
+                except:
                     return []
-                urllib.request.urlretrieve(manifest_url, manifest_path)
             return fetch_tile_and_bound_data(
                 task_graph, manifest_path,
                 url_prefix, dam_id, image_bounding_box, granule_dir)
@@ -786,7 +781,10 @@ def monitor_validation_database(validation_database_path):
                             (validation_id, image_north_lat, image_south_lat,
                              image_west_lon, image_east_lon, dam_north_lat,
                              dam_south_lat, dam_west_lng, dam_east_lng,
-                             sentinel_imagery_dir, largest_bounding_box_id))
+                             os.path.join(
+                                sentinel_imagery_dir,
+                                os.path.basename(imagery_path)),
+                             largest_bounding_box_id))
                         bounding_box_db_conn.commit()
                 else:
                     LOGGER.warn(
@@ -904,7 +902,9 @@ def monitor_validation_database(validation_database_path):
                                 (validation_id, image_north_lat,
                                  image_south_lat, image_west_lon,
                                  image_east_lon, None, None, None, None,
-                                 imagery_path,
+                                 os.path.join(
+                                    sentinel_imagery_dir,
+                                    os.path.basename(imagery_path)),
                                  largest_bounding_box_id))
                             bounding_box_db_conn.commit()
                     else:
@@ -968,7 +968,7 @@ def build_database(database_path):
             image_filename TEXT NOT NULL,
             bounding_box_id INTEGER NOT NULL PRIMARY KEY
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS validation_key
+        CREATE INDEX IF NOT EXISTS validation_key
         ON bounding_box_imagery_table (validation_id);
         CREATE UNIQUE INDEX IF NOT EXISTS bounding_box_imagery_key
         ON bounding_box_imagery_table (bounding_box_id);
