@@ -406,7 +406,7 @@ def render_summary():
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
-                # rows validated
+
                 cursor.execute(
                     'SELECT count(1) '
                     'FROM base_table '
@@ -414,13 +414,6 @@ def render_summary():
                 unvalidated_count = cursor.fetchone()[0]
                 cursor.execute('SELECT count(1) FROM base_table')
                 total_count = cursor.fetchone()[0]
-
-                cursor.execute(
-                    'SELECT count(1) from validation_table '
-                    'WHERE bounding_box_bounds != "None";')
-                count_with_bounding_box = int(cursor.fetchone()[0])
-                percent_with_bounding_box = (
-                    100.0 * count_with_bounding_box / total_count)
 
                 cursor.execute(
                     'SELECT username, count(username) '
@@ -445,12 +438,9 @@ def render_summary():
 
         return flask.render_template(
             'summary.html', **{
-                'unvalidated_count': unvalidated_count,
                 'total_count': total_count,
                 'database_list': POINT_DAM_DATA_MAP_LIST,
-                'user_color_point_list': user_color_point_list,
-                'count_with_bounding_box': count_with_bounding_box,
-                'percent_with_bounding_box': percent_with_bounding_box
+                'user_color_point_list': user_color_point_list
             })
     except:
         LOGGER.exception('exception render_summary')
@@ -473,8 +463,32 @@ def calculate_user_contribution():
                         _KELLY_COLORS_HEX, cursor.fetchall()):
                     user_contribution_list.append(
                         (user_color, username, user_count))
-                return json.dumps(
-                    [user_contribution_list])
+
+                # rows validated
+                cursor.execute(
+                    'SELECT count(1) '
+                    'FROM base_table '
+                    'WHERE key not in (SELECT key from validation_table)')
+                unvalidated_count = cursor.fetchone()[0]
+                cursor.execute('SELECT count(1) FROM base_table')
+                total_count = cursor.fetchone()[0]
+
+                cursor.execute(
+                    'SELECT count(1) from validation_table '
+                    'WHERE bounding_box_bounds != "None";')
+                count_with_bounding_box = int(cursor.fetchone()[0])
+                percent_with_bounding_box = (
+                    100.0 * count_with_bounding_box / total_count)
+                LOGGER.debug(percent_with_bounding_box)
+                return json.dumps({
+                    'user_contribution_list': user_contribution_list,
+                    'dams_validated': total_count-unvalidated_count,
+                    'percent_dams_validated': '%.2f%%' % (
+                        100.0*(total_count-unvalidated_count) / total_count),
+                    'dams_with_bounding_box': count_with_bounding_box,
+                    'percent_dams_with_bounding_box': '%.2f%%' % (
+                        percent_with_bounding_box)
+                })
     except Exception as e:
         return str(e)
 

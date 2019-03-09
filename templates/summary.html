@@ -61,9 +61,11 @@
 </div>
 <div class="column" id="infoBox">
     <p><b>{{ total_count }}</b> total dam records.</p>
-    <p><b>{{ total_count-unvalidated_count }}</b> dams validated,
-       <b>{{ '%.2f%%' % (100.0*(total_count-unvalidated_count)/total_count) }}</b> complete.</p>
-    <p><b>{{ count_with_bounding_box }}</b> validated dams have bounding boxes (<b>{{ '%.2f%%' % percent_with_bounding_box }}</b> of total dam records).</b></p>
+    <p><b id="dams_validated"></b> dams validated,
+       <b id="percent_dams_validated"></b> complete.</p>
+    <p><b id="dams_with_bounding_box"></b>
+        validated dams have bounding boxes
+        (<b id="percent_dams_with_bounding_box"></b> of total dam records).</b></p>
 
     <h2>Top contributors</h2>
     <div id="usertable">
@@ -94,7 +96,7 @@
         {% for lat,lng in point_list %}
             valid_point_array.push(
                 L.circleMarker(
-                    L.latLng({{ lat }},{{ lng }}),
+                    L.latLng({{ lat }}, {{ lng }}),
                     {
                         'radius': 1,
                         'color': '{{ user_color }}',
@@ -114,17 +116,25 @@
             },
             success: function (data) {
                 data_json = JSON.parse(data);
-                console.log(data_json);
                 var content="<table><tr><th>Username</th><th>Dams Processed</th></tr>";
-                $.each(data_json[0], function(index, value) {
-                    content += '<tr><td style="color:'+value[0]+';font-weight:bold;">'+value[1]+'</td>';
-                    content += '<td>'+value[2]+'</td></tr>';
+                $.each(
+                    data_json['user_contribution_list'],
+                    function(index, value) {
+                        content += '<tr><td style="color:'+value[0]+';font-weight:bold;">'+value[1]+'</td>';
+                        content += '<td>'+value[2]+'</td></tr>';
                 });
                 content += "</table>";
                 var d = new Date();
                 content += "<p>" + d.toString() + "</p>"
-                console.log(content);
+
                 $('#usertable').html(content);
+                $('#dams_validated').text(data_json['dams_validated']);
+                $('#percent_dams_validated').text(
+                    data_json['percent_dams_validated']);
+                $('#dams_with_bounding_box').text(
+                    data_json['dams_with_bounding_box']);
+                $('#percent_dams_with_bounding_box').text(
+                    data_json['percent_dams_with_bounding_box']);
             }
         });
     };
