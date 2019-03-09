@@ -63,6 +63,7 @@
     <p><b>{{ total_count }}</b> total dam records.</p>
     <p><b>{{ total_count-unvalidated_count }}</b> dams validated,
        <b>{{ '%.2f%%' % (100.0*(total_count-unvalidated_count)/total_count) }}</b> complete.</p>
+    <p><b>{{ '%.2f%%' % percent_with_bounding_box }} have bounding boxes.</b></p>
 
     <h2>Top contributors</h2>
     <table>
