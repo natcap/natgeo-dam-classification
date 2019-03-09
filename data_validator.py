@@ -416,6 +416,13 @@ def render_summary():
                 total_count = cursor.fetchone()[0]
 
                 cursor.execute(
+                    'SELECT count(1) from validation_table '
+                    'WHERE bounding_box_bounds != "None";')
+                count_with_bounding_box = int(cursor.fetchone()[0])
+                percent_with_bounding_box = (
+                    100.0 * count_with_bounding_box / total_count)
+
+                cursor.execute(
                     'SELECT username, count(username) '
                     'FROM validation_table '
                     'GROUP by username '
@@ -445,7 +452,9 @@ def render_summary():
                 'total_count': total_count,
                 'database_list': POINT_DAM_DATA_MAP_LIST,
                 'user_contribution_list': user_contribution_list,
-                'user_color_point_list': user_color_point_list
+                'user_color_point_list': user_color_point_list,
+                'count_with_bounding_box': count_with_bounding_box,
+                'percent_with_bounding_box': percent_with_bounding_box
             })
     except:
         LOGGER.exception('exception render_summary')
