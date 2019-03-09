@@ -85,7 +85,9 @@
 
 </body>
 <script type="text/javascript">
-    var map = L.map('mapid');
+    var map = L.map('mapid', {
+            preferCanvas: true
+        });
     L.gridLayer.googleMutant({
             maxZoom: 24,
             type:'satellite'
