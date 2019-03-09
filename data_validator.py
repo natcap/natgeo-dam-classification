@@ -34,6 +34,7 @@ APP = Flask(__name__, static_url_path='', static_folder='')
 APP.config['SECRET_KEY'] = b'\xe2\xa9\xd2\x82\xd5r\xef\xdb\xffK\x97\xcfM\xa2WH'
 LOGGER.debug(APP.config['SECRET_KEY'])
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
+ACTIVE_USERS_MAP = {}
 WORKSPACE_DIR = 'workspace'
 
 
@@ -624,6 +625,11 @@ def validation_queue_worker():
     """Process validation queue."""
     while True:
         payload, username = VALIDATION_INSERT_QUEUE.get()
+        if username not in ACTIVE_USERS_MAP:
+            ACTIVE_USERS_MAP[username] = (1, time.time())
+        else:
+            ACTIVE_USERS_MAP[username] = (
+                ACTIVE_USERS_MAP[username][0], time.time())
         LOGGER.debug(payload)
         bounding_box_bounds = None
         if 'bounding_box_bounds' in payload:
