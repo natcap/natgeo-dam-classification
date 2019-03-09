@@ -427,7 +427,6 @@ def render_summary():
                     'FROM validation_table '
                     'GROUP by username '
                     'ORDER BY count(username) DESC')
-                user_contribution_list = []
                 user_color_point_list = []
                 for user_color, (username, user_count) in zip(
                         _KELLY_COLORS_HEX, cursor.fetchall()):
@@ -443,15 +442,12 @@ def render_summary():
                         (point.y, point.x) for point in user_point_list]
                     user_color_point_list.append(
                         (user_color, user_valid_point_list))
-                    user_contribution_list.append(
-                        (user_color, (username, user_count)))
 
         return flask.render_template(
             'summary.html', **{
                 'unvalidated_count': unvalidated_count,
                 'total_count': total_count,
                 'database_list': POINT_DAM_DATA_MAP_LIST,
-                'user_contribution_list': user_contribution_list,
                 'user_color_point_list': user_color_point_list,
                 'count_with_bounding_box': count_with_bounding_box,
                 'percent_with_bounding_box': percent_with_bounding_box

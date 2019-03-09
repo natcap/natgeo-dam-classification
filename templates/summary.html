@@ -66,13 +66,8 @@
     <p><b>{{ count_with_bounding_box }}</b> validated dams have bounding boxes (<b>{{ '%.2f%%' % percent_with_bounding_box }}</b> of total dam records).</b></p>
 
     <h2>Top contributors</h2>
-    <table>
-        <tr><th>Username</th><th>Dams Processed</th></tr>
-        {% for user_color, (username, count) in user_contribution_list %}
-        <tr><td style="color:{{ user_color}};font-weight:bold;">
-            {{ username }}</td><td>{{ count }}</td></tr>
-        {% endfor %}
-    </table>
+    <div id="usertable">
+    </div>
 
     <h2>Databases Used</h2>
     <dl>
@@ -108,23 +103,32 @@
     {% endfor %}
     var group = L.featureGroup(valid_point_array).addTo(map);
 
-    setInterval(
-        function() {
-            $.ajax({
-                url: '/calculate_user_contribution',
-                type: 'GET',
-                error: function (request, status, error) {
-                    console.log(request.responseText);
-                    console.log(status);
-                    console.log(error);
-                },
-                success: function (data) {
-                    console.log(data);
-                    $.each(data, function(index, value) {
-                        console.log(value);
-                    });
-                }
-            });
-        }, 1000);
+    function calc_user_contribution() {
+        $.ajax({
+            url: '/calculate_user_contribution',
+            type: 'GET',
+            error: function (request, status, error) {
+                console.log(request.responseText);
+                console.log(status);
+                console.log(error);
+            },
+            success: function (data) {
+                data_json = JSON.parse(data);
+                console.log(data_json);
+                var content="<table><tr><th>Username</th><th>Dams Processed</th></tr>";
+                $.each(data_json[0], function(index, value) {
+                    content += '<tr><td style="color:'+value[0]+';font-weight:bold;">'+value[1]+'</td>';
+                    content += '<td>'+value[2]+'</td></tr>';
+                });
+                content += "</table>";
+                var d = new Date();
+                content += "<p>" + d.toString() + "</p>"
+                console.log(content);
+                $('#usertable').html(content);
+            }
+        });
+    };
+    calc_user_contribution();
+    setInterval(calc_user_contribution, 5000);
 </script>
 </html>
