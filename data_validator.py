@@ -460,6 +460,28 @@ def render_summary():
         LOGGER.exception('exception render_summary')
         raise
 
+@APP.route('/calculate_user_contribution', methods=['GET'])
+def calculate_user_contribution():
+    """Return a list of color username/count tuples."""
+    try:
+        with DB_LOCK:
+            with sqlite3.connect(DATABASE_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'SELECT username, count(username) '
+                    'FROM validation_table '
+                    'GROUP by username '
+                    'ORDER BY count(username) DESC')
+                user_contribution_list = []
+                for user_color, (username, user_count) in zip(
+                        _KELLY_COLORS_HEX, cursor.fetchall()):
+                    user_contribution_list.append(
+                        (user_color, username, user_count))
+                return json.dumps(
+                    [user_contribution_list])
+    except Exception as e:
+        return str(e)
+
 
 @APP.route('/user_validation_summary', methods=['GET'])
 def user_validation_summary():

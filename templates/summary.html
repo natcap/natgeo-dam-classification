@@ -107,5 +107,24 @@
         {% endfor %}
     {% endfor %}
     var group = L.featureGroup(valid_point_array).addTo(map);
+
+    setInterval(
+        function() {
+            $.ajax({
+                url: '/calculate_user_contribution',
+                type: 'GET',
+                error: function (request, status, error) {
+                    console.log(request.responseText);
+                    console.log(status);
+                    console.log(error);
+                },
+                success: function (data) {
+                    console.log(data);
+                    $.each(data, function(index, value) {
+                        console.log(value);
+                    });
+                }
+            });
+        }, 1000);
 </script>
 </html>
