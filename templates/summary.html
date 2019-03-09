@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="css/w3.css">
 <style type="text/css">
     #mapid {
-        height: 400px;
+        height: 300px;
         width: 400px;
     }
     #infoBox {
@@ -17,7 +17,8 @@
         padding-left:5%;
         padding-right:5%;
         float: left;
-        width: 25%;
+        width: 30%;
+        font-size: small;
     }
 
     /* Clear floats after the columns */
@@ -55,37 +56,40 @@
 <h1><img src="images/natcap.png"/> & NatGeo Sentinel Dam Location Summary</h1>
 <h2><a href="/">Back to validation</a></h2>
 <hr>
-<h2>Summary Stats</h2>
-<div class="column">
-    <div id="mapid"></div>
-</div>
 <div class="column" id="infoBox">
+    <div id="timestamp"></div>
+    <hr>
     <p><b>{{ total_count }}</b> total dam records.</p>
     <p><b id="dams_validated"></b> dams validated,
        <b id="percent_dams_validated"></b> complete.</p>
     <p><b id="dams_with_bounding_box"></b>
         validated dams have bounding boxes
         (<b id="percent_dams_with_bounding_box"></b> of total dam records).</b></p>
-
-    <h2>Top contributors</h2>
+    <hr>
     <div id="usertable">
     </div>
-
-    <h2>Databases Used</h2>
+    <hr>
+    <b>Databases Used</b>
     <dl>
         {% for database_id, database_info in database_list %}
             <dt>{{ database_id }}</dt>
             <dd><a href="{{ database_info.database_url }}">{{ database_info.database_url }}</a></dd>
         {% endfor %}
     </dl>
+    <hr>
 </div>
-
+<div class="column">
+    <b>Map of validated dams</b>
+    <div id="mapid"></div>
+    <p>Point color indicates the user who validated the dam.</p>
+</div>
 </body>
 <script type="text/javascript">
     var map = L.map('mapid', {
             preferCanvas: true
         });
     L.gridLayer.googleMutant({
+            minZoom: 1,
             maxZoom: 24,
             type:'satellite'
     }).addTo(map);
@@ -125,8 +129,7 @@
                 });
                 content += "</table>";
                 var d = new Date();
-                content += "<p>" + d.toString() + "</p>"
-
+                $('#timestamp').html("<p>" + d.toString() + "</p>");
                 $('#usertable').html(content);
                 $('#dams_validated').text(data_json['dams_validated']);
                 $('#percent_dams_validated').text(
