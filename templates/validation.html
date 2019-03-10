@@ -190,6 +190,14 @@
             bounding_box.setStyle({color: "#22ff22", weight: 3});
             map.panTo(bounding_box.getCenter());
             map.fitBounds(bounding_box.getBounds());
+            $('#nextpoint').html('Submit/Go To Next Dam (press enter)');
+            $('#mapid').keydown(function (e){
+                if(e.keyCode == 13){
+                    $('#nextpoint').prop('disabled',true).css('opacity', 0.5);
+                    $('#nextpoint').html('Submitting...');
+                    post_to_server(e);
+                }
+            })
         }
     });
 
