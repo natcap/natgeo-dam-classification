@@ -32,10 +32,10 @@ logging.basicConfig(
 
 APP = Flask(__name__, static_url_path='', static_folder='')
 APP.config['SECRET_KEY'] = b'\xe2\xa9\xd2\x82\xd5r\xef\xdb\xffK\x97\xcfM\xa2WH'
-LOGGER.debug(APP.config['SECRET_KEY'])
 VISITED_POINT_ID_TIMESTAMP_MAP = {}
 ACTIVE_USERS_MAP = {}
 WORKSPACE_DIR = 'workspace'
+TIME_TO_KEEP_ACTIVE_USERS = 5*60
 
 
 def parse_shapefile(db_key, description_key, filter_tuple):
@@ -374,6 +374,7 @@ def get_unvalidated_point():
         LOGGER.exception('exception in unvalidated')
         raise
 
+
 # Used to highlight different user's contributions
 _KELLY_COLORS_HEX = [
     '#FFB300',  # Vivid Yellow
@@ -407,12 +408,6 @@ def render_summary():
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
                 cursor = conn.cursor()
-
-                cursor.execute(
-                    'SELECT count(1) '
-                    'FROM base_table '
-                    'WHERE key not in (SELECT key from validation_table)')
-                unvalidated_count = cursor.fetchone()[0]
                 cursor.execute('SELECT count(1) FROM base_table')
                 total_count = cursor.fetchone()[0]
 
@@ -531,6 +526,9 @@ def flush_visited_point_id_timestamp():
             for _point_id, _timestamp in VISITED_POINT_ID_TIMESTAMP_MAP.items()
             if _timestamp+ACTIVE_DELAY > now
         }
+        for username in list(ACTIVE_USERS_MAP):
+            if now - ACTIVE_USERS_MAP[username][1] > TIME_TO_KEEP_ACTIVE_USERS:
+                del ACTIVE_USERS_MAP[username]
 
 
 @APP.route('/<int:point_id>')
@@ -595,6 +593,12 @@ def process_point(point_id):
         return str(e)
 
 
+@APP.route('/active_users', methods=['GET'])
+def active_users():
+    flush_visited_point_id_timestamp()
+    return json.dumps(ACTIVE_USERS_MAP)
+
+
 @APP.route('/update_username', methods=['POST'])
 def update_username():
     try:
@@ -629,7 +633,7 @@ def validation_queue_worker():
             ACTIVE_USERS_MAP[username] = (1, time.time())
         else:
             ACTIVE_USERS_MAP[username] = (
-                ACTIVE_USERS_MAP[username][0], time.time())
+                ACTIVE_USERS_MAP[username][0]+1, time.time())
         LOGGER.debug(payload)
         bounding_box_bounds = None
         if 'bounding_box_bounds' in payload:

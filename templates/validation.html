@@ -51,6 +51,7 @@
         box-shadow: rgba(0, 0, 0, 0.2) 4px 4px 4px 4px, rgba(0, 0, 0, 0.02) -1px -1px -1px -1px;
         box-sizing: border-box;
         padding: 5px;
+        width: 301px;
     }
     #mouse_tip {
         position: absolute;
@@ -91,6 +92,10 @@
             </strong>
         </a>
         </p>
+        <fieldset>
+            <legend>Active Users</legend>
+            <div id="active_users"></div>
+        </fieldset>
         <fieldset>
             <legend>Data Entry</legend>
             <textarea
@@ -281,5 +286,39 @@
             $("input").checkboxradio().checkboxradio("disable");
             $("#comments").attr("disabled", "disabled");
     }});
+
+    function get_active_users() {
+        $.ajax({
+            url: '/active_users',
+            type: 'GET',
+            error: function (request, status, error) {
+                console.log(request.responseText);
+                console.log(status);
+                console.log(error);
+            },
+            success: function (data) {
+                data_json = JSON.parse(data);
+                var any_data = false;
+                var content="";
+                $.each(
+                    data_json,
+                    function(username, count_time_tuple) {
+                        content += (
+                            '<b>'+username+'</b>('+count_time_tuple[0]+'), ');
+                        any_data = true;
+                });
+                if (any_data) {
+                    content = content.substring(0, content.length-2)
+                    content += "</table>";
+                    $('#active_users').html(content);
+                } else {
+                    $('#active_users').html('');
+                }
+            }
+        });
+    };
+    get_active_users();
+    setInterval(get_active_users, 5000);
+
 </script>
 </html>
