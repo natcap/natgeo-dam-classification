@@ -190,7 +190,8 @@
             bounding_box.setStyle({color: "#22ff22", weight: 3});
             map.panTo(bounding_box.getCenter());
             map.fitBounds(bounding_box.getBounds());
-            $('#nextpoint').html('Submit/Go To Next Dam (press enter)');
+            $('#nextpoint').html(
+                'Submit/Go To Next Dam <b>(press enter)</b>');
             $('#mapid').keydown(function (e){
                 if(e.keyCode == 13){
                     $('#nextpoint').prop('disabled',true).css('opacity', 0.5);
