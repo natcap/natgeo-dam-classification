@@ -22,6 +22,7 @@ import flask
 
 
 LOGGER = logging.getLogger(__name__)
+VALIDATAION_WORKER_DIED = False
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -333,6 +334,8 @@ def favicon():
 
 @APP.route('/')
 def get_unvalidated_point():
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     """Get a point that has not been validated."""
     LOGGER.debug('trying to get an unvalidated point')
     point_id_to_process = None
@@ -404,6 +407,8 @@ _KELLY_COLORS_HEX = [
 @APP.route('/summary')
 def render_summary():
     """Get a point that has not been validated."""
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
@@ -445,6 +450,8 @@ def render_summary():
 @APP.route('/calculate_user_contribution', methods=['GET'])
 def calculate_user_contribution():
     """Return a list of color username/count tuples."""
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
@@ -492,6 +499,8 @@ def calculate_user_contribution():
 @APP.route('/user_validation_summary', methods=['GET'])
 def user_validation_summary():
     """Dump a table of classified info."""
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
         with DB_LOCK:
             with sqlite3.connect(DATABASE_PATH) as conn:
@@ -534,6 +543,8 @@ def flush_visited_point_id_timestamp():
 @APP.route('/<int:point_id>')
 def process_point(point_id):
     """Entry page."""
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     LOGGER.debug('process point %s', point_id)
     flush_visited_point_id_timestamp()
     VISITED_POINT_ID_TIMESTAMP_MAP[point_id] = time.time()
@@ -595,12 +606,16 @@ def process_point(point_id):
 
 @APP.route('/active_users', methods=['GET'])
 def active_users():
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     flush_visited_point_id_timestamp()
     return json.dumps(ACTIVE_USERS_MAP)
 
 
 @APP.route('/update_username', methods=['POST'])
 def update_username():
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
         LOGGER.debug('change in username')
         payload = json.loads(flask.request.data.decode('utf-8'))
@@ -614,6 +629,8 @@ def update_username():
 @APP.route('/update_dam_data', methods=['POST'])
 def update_dam_data():
     """Push event on a marker."""
+    if VALIDATAION_WORKER_DIED:
+        return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
         LOGGER.debug('got a post')
         payload = json.loads(flask.request.data.decode('utf-8'))
@@ -627,32 +644,37 @@ def update_dam_data():
 
 def validation_queue_worker():
     """Process validation queue."""
-    while True:
-        payload, username = VALIDATION_INSERT_QUEUE.get()
-        if username not in ACTIVE_USERS_MAP:
-            ACTIVE_USERS_MAP[username] = (1, time.time())
-        else:
-            ACTIVE_USERS_MAP[username] = (
-                ACTIVE_USERS_MAP[username][0]+1, time.time())
-        LOGGER.debug(payload)
-        bounding_box_bounds = None
-        if 'bounding_box_bounds' in payload:
-            bounding_box_bounds = [
-                payload['bounding_box_bounds']['_southWest'],
-                payload['bounding_box_bounds']['_northEast']]
-        with DB_LOCK:
-            with sqlite3.connect(DATABASE_PATH) as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT max(id) FROM validation_table;')
-                max_validation_id = cursor.fetchone()[0]
-                cursor.execute(
-                    'INSERT OR REPLACE INTO validation_table '
-                    'VALUES (?, ?, ?, ?, ?, ?);',
-                    (str(bounding_box_bounds), payload['point_id'],
-                     json.dumps(payload['metadata']),
-                     username,
-                     str(datetime.datetime.utcnow()),
-                     max_validation_id+1))
+    try:
+        while True:
+            payload, username = VALIDATION_INSERT_QUEUE.get()
+            if username not in ACTIVE_USERS_MAP:
+                ACTIVE_USERS_MAP[username] = (1, time.time())
+            else:
+                ACTIVE_USERS_MAP[username] = (
+                    ACTIVE_USERS_MAP[username][0]+1, time.time())
+            LOGGER.debug(payload)
+            bounding_box_bounds = None
+            if 'bounding_box_bounds' in payload:
+                bounding_box_bounds = [
+                    payload['bounding_box_bounds']['_southWest'],
+                    payload['bounding_box_bounds']['_northEast']]
+            with DB_LOCK:
+                with sqlite3.connect(DATABASE_PATH) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT max(id) FROM validation_table;')
+                    max_validation_id = cursor.fetchone()[0]
+                    cursor.execute(
+                        'INSERT OR REPLACE INTO validation_table '
+                        'VALUES (?, ?, ?, ?, ?, ?);',
+                        (str(bounding_box_bounds), payload['point_id'],
+                         json.dumps(payload['metadata']),
+                         username,
+                         str(datetime.datetime.utcnow()),
+                         max_validation_id+1))
+    except:
+        LOGGER.exception('validation queue worker crashed.')
+        global VALIDATAION_WORKER_DIED
+        VALIDATAION_WORKER_DIED = True
 
 
 @APP.after_request
