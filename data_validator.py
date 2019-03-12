@@ -658,19 +658,26 @@ def validation_queue_worker():
                 bounding_box_bounds = [
                     payload['bounding_box_bounds']['_southWest'],
                     payload['bounding_box_bounds']['_northEast']]
-            with DB_LOCK:
-                with sqlite3.connect(DATABASE_PATH) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('SELECT max(id) FROM validation_table;')
-                    max_validation_id = cursor.fetchone()[0]
-                    cursor.execute(
-                        'INSERT OR REPLACE INTO validation_table '
-                        'VALUES (?, ?, ?, ?, ?, ?);',
-                        (str(bounding_box_bounds), payload['point_id'],
-                         json.dumps(payload['metadata']),
-                         username,
-                         str(datetime.datetime.utcnow()),
-                         max_validation_id+1))
+            while True:
+                with DB_LOCK:
+                    try:
+                        with sqlite3.connect(DATABASE_PATH) as conn:
+                            cursor = conn.cursor()
+                            cursor.execute('SELECT max(id) FROM validation_table;')
+                            max_validation_id = cursor.fetchone()[0]
+                            cursor.execute(
+                                'INSERT OR REPLACE INTO validation_table '
+                                'VALUES (?, ?, ?, ?, ?, ?);',
+                                (str(bounding_box_bounds), payload['point_id'],
+                                 json.dumps(payload['metadata']),
+                                 username,
+                                 str(datetime.datetime.utcnow()),
+                                 max_validation_id+1))
+                            break
+                    except:
+                        LOGGER.exception(
+                            "error opening the database, trying again")
+                        time.sleep(1)
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
