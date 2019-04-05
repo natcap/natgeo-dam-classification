@@ -338,75 +338,72 @@ def get_unvalidated_point():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     """Get a point that has not been validated."""
-    LOGGER.debug('trying to get an unvalidated point')
+    LOGGER.info('trying to get an unvalidated point')
     point_id_to_process = None
     try:
-        with DB_LOCK:
-            thread_id = threading.get_ident()
-            if thread_id not in DB_CONN_THREAD_MAP:
-                DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                    DATABASE_PATH)
-            cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-            # Try to get an unvalidated non NID point
-            flush_visited_point_id_timestamp()
-            while True:
-                # scrub any 0 points.
-                cursor.execute(
-                    "SELECT key, source_point_wkt "
-                    "FROM base_table "
-                    "WHERE key not in (SELECT key from validation_table) AND "
-                    "source_point_wkt LIKE '%(0 0)%';")
+        thread_id = threading.get_ident()
+        if thread_id not in DB_CONN_THREAD_MAP:
+            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+                DATABASE_PATH)
+        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        # Try to get an unvalidated non NID point
+        flush_visited_point_id_timestamp()
+        while True:
+            # scrub any 0 points.
+            cursor.execute(
+                "SELECT key, source_point_wkt "
+                "FROM base_table "
+                "WHERE key not in (SELECT key from validation_table) AND "
+                "source_point_wkt LIKE '%(0 0)%';")
+            for payload in cursor:
+                zero_point_id = payload[0]
+                source_point_wkt = payload[1]
+                source_point = shapely.wkt.loads(source_point_wkt)
+                if source_point.x == 0 and source_point.y == 0:
+                    # insert bad point
+                    payload = {
+                        'point_id': zero_point_id,
+                        'metadata': {
+                            'comments': (
+                                'automated removal of a (0, 0) '
+                                'coordinate dam')
+                        }
+                    }
+                    VALIDATION_INSERT_QUEUE.put((payload, _ZERO_USER))
+
+            # Lisa wants to do the us national inventory of dams last
+            cursor.execute(
+                "SELECT key, source_point_wkt "
+                "FROM base_table "
+                "WHERE key not in (SELECT key from validation_table) AND "
+                "database_id != 'US National Inventory of Dams' "
+                "ORDER BY RANDOM();")
+            with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
                 for payload in cursor:
-                    zero_point_id = payload[0]
+                    unvalidated_point_id = payload[0]
                     source_point_wkt = payload[1]
                     source_point = shapely.wkt.loads(source_point_wkt)
-                    LOGGER.debug(source_point)
-                    if source_point.x == 0 and source_point.y == 0:
-                        # insert bad point
-                        payload = {
-                            'point_id': zero_point_id,
-                            'metadata': {
-                                'comments': (
-                                    'automated removal of a (0, 0) '
-                                    'coordinate dam')
-                            }
-                        }
-                        VALIDATION_INSERT_QUEUE.put((payload, _ZERO_USER))
-
-                # Lisa wants to do the us national inventory of dams last
+                    if unvalidated_point_id not in (
+                            VISITED_POINT_ID_TIMESTAMP_MAP):
+                        point_id_to_process = unvalidated_point_id
+                        break
+            if point_id_to_process is None:
+                LOGGER.info('must have nothing but NID left.')
                 cursor.execute(
-                    "SELECT key, source_point_wkt "
-                    "FROM base_table "
-                    "WHERE key not in (SELECT key from validation_table) AND "
-                    "database_id != 'US National Inventory of Dams' "
-                    "ORDER BY RANDOM();")
+                    'SELECT key, source_point_wkt '
+                    'FROM base_table '
+                    'WHERE key not in (SELECT key from validation_table) '
+                    'ORDER BY RANDOM();')
                 with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
                     for payload in cursor:
                         unvalidated_point_id = payload[0]
                         source_point_wkt = payload[1]
                         source_point = shapely.wkt.loads(source_point_wkt)
-                        LOGGER.debug(source_point)
                         if unvalidated_point_id not in (
                                 VISITED_POINT_ID_TIMESTAMP_MAP):
                             point_id_to_process = unvalidated_point_id
                             break
-                if point_id_to_process is None:
-                    LOGGER.debug('must have nothing but NID left.')
-                    cursor.execute(
-                        'SELECT key, source_point_wkt '
-                        'FROM base_table '
-                        'WHERE key not in (SELECT key from validation_table) '
-                        'ORDER BY RANDOM();')
-                    with VISITED_POINT_ID_TIMESTAMP_MAP_LOCK:
-                        for payload in cursor:
-                            unvalidated_point_id = payload[0]
-                            source_point_wkt = payload[1]
-                            source_point = shapely.wkt.loads(source_point_wkt)
-                            if unvalidated_point_id not in (
-                                    VISITED_POINT_ID_TIMESTAMP_MAP):
-                                point_id_to_process = unvalidated_point_id
-                                break
-                break
+            break
         return process_point(unvalidated_point_id)
     except:
         LOGGER.exception('exception in unvalidated')
@@ -445,35 +442,34 @@ def render_summary():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        with DB_LOCK:
-            thread_id = threading.get_ident()
-            if thread_id not in DB_CONN_THREAD_MAP:
-                DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                    DATABASE_PATH)
-            cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-            cursor.execute('SELECT count(1) FROM base_table')
-            total_count = cursor.fetchone()[0]
+        thread_id = threading.get_ident()
+        if thread_id not in DB_CONN_THREAD_MAP:
+            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+                DATABASE_PATH)
+        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor.execute('SELECT count(1) FROM base_table')
+        total_count = cursor.fetchone()[0]
 
+        cursor.execute(
+            'SELECT username, count(username) '
+            'FROM validation_table '
+            'GROUP by username '
+            'ORDER BY count(username) DESC')
+        user_color_point_list = []
+        for user_color, (username, user_count) in zip(
+                _KELLY_COLORS_HEX, cursor.fetchall()):
             cursor.execute(
-                'SELECT username, count(username) '
-                'FROM validation_table '
-                'GROUP by username '
-                'ORDER BY count(username) DESC')
-            user_color_point_list = []
-            for user_color, (username, user_count) in zip(
-                    _KELLY_COLORS_HEX, cursor.fetchall()):
-                cursor.execute(
-                    'SELECT source_point_wkt '
-                    'FROM base_table '
-                    'WHERE key in ('
-                    'SELECT key from validation_table '
-                    'WHERE username = ?)', (username,))
-                user_point_list = [
-                    shapely.wkt.loads(wkt[0]) for wkt in cursor]
-                user_valid_point_list = [
-                    (point.y, point.x) for point in user_point_list]
-                user_color_point_list.append(
-                    (user_color, user_valid_point_list))
+                'SELECT source_point_wkt '
+                'FROM base_table '
+                'WHERE key in ('
+                'SELECT key from validation_table '
+                'WHERE username = ?)', (username,))
+            user_point_list = [
+                shapely.wkt.loads(wkt[0]) for wkt in cursor]
+            user_valid_point_list = [
+                (point.y, point.x) for point in user_point_list]
+            user_color_point_list.append(
+                (user_color, user_valid_point_list))
 
         return flask.render_template(
             'summary.html', **{
@@ -491,48 +487,46 @@ def calculate_user_contribution():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        with DB_LOCK:
-            thread_id = threading.get_ident()
-            if thread_id not in DB_CONN_THREAD_MAP:
-                DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                    DATABASE_PATH)
-            cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-            cursor.execute(
-                'SELECT username, count(username) '
-                'FROM validation_table '
-                'GROUP by username '
-                'ORDER BY count(username) DESC')
-            user_contribution_list = []
-            for user_color, (username, user_count) in zip(
-                    _KELLY_COLORS_HEX, cursor.fetchall()):
-                user_contribution_list.append(
-                    (user_color, username, user_count))
+        thread_id = threading.get_ident()
+        if thread_id not in DB_CONN_THREAD_MAP:
+            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+                DATABASE_PATH)
+        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor.execute(
+            'SELECT username, count(username) '
+            'FROM validation_table '
+            'GROUP by username '
+            'ORDER BY count(username) DESC')
+        user_contribution_list = []
+        for user_color, (username, user_count) in zip(
+                _KELLY_COLORS_HEX, cursor.fetchall()):
+            user_contribution_list.append(
+                (user_color, username, user_count))
 
-            # rows validated
-            cursor.execute(
-                'SELECT count(1) '
-                'FROM base_table '
-                'WHERE key not in (SELECT key from validation_table)')
-            unvalidated_count = cursor.fetchone()[0]
-            cursor.execute('SELECT count(1) FROM base_table')
-            total_count = cursor.fetchone()[0]
+        # rows validated
+        cursor.execute(
+            'SELECT count(1) '
+            'FROM base_table '
+            'WHERE key not in (SELECT key from validation_table)')
+        unvalidated_count = cursor.fetchone()[0]
+        cursor.execute('SELECT count(1) FROM base_table')
+        total_count = cursor.fetchone()[0]
 
-            cursor.execute(
-                'SELECT count(1) from validation_table '
-                'WHERE bounding_box_bounds != "None";')
-            count_with_bounding_box = int(cursor.fetchone()[0])
-            percent_with_bounding_box = (
-                100.0 * count_with_bounding_box / total_count)
-            LOGGER.debug(percent_with_bounding_box)
-            return json.dumps({
-                'user_contribution_list': user_contribution_list,
-                'dams_validated': total_count-unvalidated_count,
-                'percent_dams_validated': '%.2f%%' % (
-                    100.0*(total_count-unvalidated_count) / total_count),
-                'dams_with_bounding_box': count_with_bounding_box,
-                'percent_dams_with_bounding_box': '%.2f%%' % (
-                    percent_with_bounding_box)
-            })
+        cursor.execute(
+            'SELECT count(1) from validation_table '
+            'WHERE bounding_box_bounds != "None";')
+        count_with_bounding_box = int(cursor.fetchone()[0])
+        percent_with_bounding_box = (
+            100.0 * count_with_bounding_box / total_count)
+        return json.dumps({
+            'user_contribution_list': user_contribution_list,
+            'dams_validated': total_count-unvalidated_count,
+            'percent_dams_validated': '%.2f%%' % (
+                100.0*(total_count-unvalidated_count) / total_count),
+            'dams_with_bounding_box': count_with_bounding_box,
+            'percent_dams_with_bounding_box': '%.2f%%' % (
+                percent_with_bounding_box)
+        })
     except Exception as e:
         return str(e)
 
@@ -543,22 +537,21 @@ def user_validation_summary():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        with DB_LOCK:
-            thread_id = threading.get_ident()
-            if thread_id not in DB_CONN_THREAD_MAP:
-                DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                    DATABASE_PATH)
-            cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-            # rows validated
-            cursor.execute(
-                'SELECT '
-                'database_id, source_key, '
-                'description, validation_table.key, '
-                'validation_table.metadata, validation_table.username '
-                'FROM base_table '
-                'INNER JOIN validation_table on  '
-                'validation_table.key = base_table.key;')
-            key_metadata_list = list(cursor.fetchall())
+        thread_id = threading.get_ident()
+        if thread_id not in DB_CONN_THREAD_MAP:
+            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+                DATABASE_PATH)
+        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        # rows validated
+        cursor.execute(
+            'SELECT '
+            'database_id, source_key, '
+            'description, validation_table.key, '
+            'validation_table.metadata, validation_table.username '
+            'FROM base_table '
+            'INNER JOIN validation_table on  '
+            'validation_table.key = base_table.key;')
+        key_metadata_list = list(cursor.fetchall())
 
         return flask.render_template(
             'user_validation_summary.html', **{
@@ -589,44 +582,43 @@ def process_point(point_id):
     """Entry page."""
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
-    LOGGER.debug('process point %s', point_id)
+    LOGGER.info('process point %s', point_id)
     flush_visited_point_id_timestamp()
     VISITED_POINT_ID_TIMESTAMP_MAP[point_id] = time.time()
     try:
-        with DB_LOCK:
-            thread_id = threading.get_ident()
-            if thread_id not in DB_CONN_THREAD_MAP:
-                DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                    DATABASE_PATH)
-            cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-            cursor.execute(
-                'SELECT '
-                'database_id, source_key, description, source_point_wkt '
-                'from base_table WHERE key = ?', (point_id,))
-            database_id, source_key, dam_description, geometry_wkt = (
-                cursor.fetchone())
-            base_point_geom = shapely.wkt.loads(geometry_wkt)
-            base_point_id = f'{database_id}({source_key})'
+        thread_id = threading.get_ident()
+        if thread_id not in DB_CONN_THREAD_MAP:
+            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+                DATABASE_PATH)
+        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor.execute(
+            'SELECT '
+            'database_id, source_key, description, source_point_wkt '
+            'from base_table WHERE key = ?', (point_id,))
+        database_id, source_key, dam_description, geometry_wkt = (
+            cursor.fetchone())
+        base_point_geom = shapely.wkt.loads(geometry_wkt)
+        base_point_id = f'{database_id}({source_key})'
 
-            cursor.execute(
-                'SELECT bounding_box_bounds, metadata '
-                'from validation_table WHERE key = ?', (point_id,))
-            payload = cursor.fetchone()
+        cursor.execute(
+            'SELECT bounding_box_bounds, metadata '
+            'from validation_table WHERE key = ?', (point_id,))
+        payload = cursor.fetchone()
 
-            # make a default metadata object just in case it's not defined
-            metadata = {
-                'comments': DEFAULT_COMMENT_BOX_TEXT,
-                }
-            bounding_box_bounds = None
-            checkbox_values = {}
-            if payload is not None:
-                bounding_box_bounds, metadata_json = payload
-                if metadata_json is not None:
-                    metadata = json.loads(metadata_json)
-                    if 'checkbox_values' in metadata:
-                        checkbox_values = metadata['checkbox_values']
-                    if 'comments' not in metadata:
-                        metadata['comments'] = DEFAULT_COMMENT_BOX_TEXT
+        # make a default metadata object just in case it's not defined
+        metadata = {
+            'comments': DEFAULT_COMMENT_BOX_TEXT,
+            }
+        bounding_box_bounds = None
+        checkbox_values = {}
+        if payload is not None:
+            bounding_box_bounds, metadata_json = payload
+            if metadata_json is not None:
+                metadata = json.loads(metadata_json)
+                if 'checkbox_values' in metadata:
+                    checkbox_values = metadata['checkbox_values']
+                if 'comments' not in metadata:
+                    metadata['comments'] = DEFAULT_COMMENT_BOX_TEXT
 
         if 'username' in flask.session:
             session_username_text = flask.session['username']
@@ -664,7 +656,6 @@ def update_username():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        LOGGER.debug('change in username')
         payload = json.loads(flask.request.data.decode('utf-8'))
         flask.session['username'] = payload['username']
         return flask.session['username']
@@ -679,7 +670,7 @@ def update_dam_data():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        LOGGER.debug('got a post')
+        LOGGER.info('got a post to update dam database')
         payload = json.loads(flask.request.data.decode('utf-8'))
         VALIDATION_INSERT_QUEUE.put(
             (payload, flask.session['username']))
@@ -699,35 +690,33 @@ def validation_queue_worker():
             else:
                 ACTIVE_USERS_MAP[username] = (
                     ACTIVE_USERS_MAP[username][0]+1, time.time())
-            LOGGER.debug(payload)
             bounding_box_bounds = None
             if 'bounding_box_bounds' in payload:
                 bounding_box_bounds = [
                     payload['bounding_box_bounds']['_southWest'],
                     payload['bounding_box_bounds']['_northEast']]
             while True:
-                with DB_LOCK:
-                    try:
-                        thread_id = threading.get_ident()
-                        if thread_id not in DB_CONN_THREAD_MAP:
-                            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                                DATABASE_PATH)
-                        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-                        cursor.execute('SELECT max(id) FROM validation_table;')
-                        max_validation_id = cursor.fetchone()[0]
-                        cursor.execute(
-                            'INSERT OR REPLACE INTO validation_table '
-                            'VALUES (?, ?, ?, ?, ?, ?);',
-                            (str(bounding_box_bounds), payload['point_id'],
-                             json.dumps(payload['metadata']),
-                             username,
-                             str(datetime.datetime.utcnow()),
-                             max_validation_id+1))
-                        break
-                    except:
-                        LOGGER.exception(
-                            "error opening the database, trying again")
-                        time.sleep(1)
+                try:
+                    thread_id = threading.get_ident()
+                    if thread_id not in DB_CONN_THREAD_MAP:
+                        DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+                            DATABASE_PATH)
+                    cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+                    cursor.execute('SELECT max(id) FROM validation_table;')
+                    max_validation_id = cursor.fetchone()[0]
+                    cursor.execute(
+                        'INSERT OR REPLACE INTO validation_table '
+                        'VALUES (?, ?, ?, ?, ?, ?);',
+                        (str(bounding_box_bounds), payload['point_id'],
+                         json.dumps(payload['metadata']),
+                         username,
+                         str(datetime.datetime.utcnow()),
+                         max_validation_id+1))
+                    break
+                except:
+                    LOGGER.exception(
+                        "error opening the database, trying again")
+                    time.sleep(1)
             DB_CONN_THREAD_MAP[threading.get_ident()].commit()
     except:
         LOGGER.exception('validation queue worker crashed.')
@@ -800,34 +789,33 @@ def build_base_validation_db(
         CREATE UNIQUE INDEX IF NOT EXISTS validation_table_id_index
         ON validation_table (id);
         """)
-    with DB_LOCK:
-        thread_id = threading.get_ident()
-        if thread_id not in DB_CONN_THREAD_MAP:
-            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                DATABASE_PATH)
-        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-        cursor.executescript(sql_create_projects_table)
+    thread_id = threading.get_ident()
+    if thread_id not in DB_CONN_THREAD_MAP:
+        DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
+            DATABASE_PATH)
+    cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+    cursor.executescript(sql_create_projects_table)
 
-        next_feature_id = 0
-        for database_id, database_map in database_info_map_list:
-            # fetch the database and unzip it
-            LOGGER.info('processing %s', database_id)
-            target_path = os.path.join(
-                WORKSPACE_DIR,
-                os.path.basename(database_map['database_url']))
-            token_file = f'{target_path}.UNZIPPED'
-            download_and_unzip(
-                database_map['database_url'], target_path, token_file)
-            dam_data_list = database_map['parse_function'](
-                database_map['database_expected_path'])
-            for base_db_key, description, geom_wkt in dam_data_list:
-                cursor.execute(
-                    'INSERT OR IGNORE INTO base_table '
-                    'VALUES (?, ?, ?, ?, ?)',
-                    (database_id, base_db_key, description,
-                     geom_wkt, next_feature_id))
-                next_feature_id += 1
-        DB_CONN_THREAD_MAP[threading.get_ident()].commit()
+    next_feature_id = 0
+    for database_id, database_map in database_info_map_list:
+        # fetch the database and unzip it
+        LOGGER.info('processing %s', database_id)
+        target_path = os.path.join(
+            WORKSPACE_DIR,
+            os.path.basename(database_map['database_url']))
+        token_file = f'{target_path}.UNZIPPED'
+        download_and_unzip(
+            database_map['database_url'], target_path, token_file)
+        dam_data_list = database_map['parse_function'](
+            database_map['database_expected_path'])
+        for base_db_key, description, geom_wkt in dam_data_list:
+            cursor.execute(
+                'INSERT OR IGNORE INTO base_table '
+                'VALUES (?, ?, ?, ?, ?)',
+                (database_id, base_db_key, description,
+                 geom_wkt, next_feature_id))
+            next_feature_id += 1
+    DB_CONN_THREAD_MAP[threading.get_ident()].commit()
 
     with open(complete_token_path, 'w') as token_file:
         token_file.write(str(datetime.datetime.now()))
@@ -849,7 +837,6 @@ if __name__ == '__main__':
     validation_thread = threading.Thread(
         target=validation_queue_worker)
     validation_thread.start()
-    DB_LOCK = threading.Lock()
     VISITED_POINT_ID_TIMESTAMP_MAP_LOCK = threading.Lock()
     complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
