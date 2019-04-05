@@ -341,11 +341,7 @@ def get_unvalidated_point():
     LOGGER.info('trying to get an unvalidated point')
     point_id_to_process = None
     try:
-        thread_id = threading.get_ident()
-        if thread_id not in DB_CONN_THREAD_MAP:
-            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                DATABASE_PATH)
-        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor = get_db_cursor()
         # Try to get an unvalidated non NID point
         flush_visited_point_id_timestamp()
         while True:
@@ -370,7 +366,6 @@ def get_unvalidated_point():
                         }
                     }
                     VALIDATION_INSERT_QUEUE.put((payload, _ZERO_USER))
-
             # Lisa wants to do the us national inventory of dams last
             cursor.execute(
                 "SELECT key, source_point_wkt "
@@ -404,6 +399,7 @@ def get_unvalidated_point():
                             point_id_to_process = unvalidated_point_id
                             break
             break
+        cursor.close()
         return process_point(unvalidated_point_id)
     except:
         LOGGER.exception('exception in unvalidated')
@@ -442,11 +438,7 @@ def render_summary():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        thread_id = threading.get_ident()
-        if thread_id not in DB_CONN_THREAD_MAP:
-            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                DATABASE_PATH)
-        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor = get_db_cursor()
         cursor.execute('SELECT count(1) FROM base_table')
         total_count = cursor.fetchone()[0]
 
@@ -471,6 +463,7 @@ def render_summary():
             user_color_point_list.append(
                 (user_color, user_valid_point_list))
 
+        cursor.close()
         return flask.render_template(
             'summary.html', **{
                 'total_count': total_count,
@@ -487,11 +480,7 @@ def calculate_user_contribution():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        thread_id = threading.get_ident()
-        if thread_id not in DB_CONN_THREAD_MAP:
-            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                DATABASE_PATH)
-        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor = get_db_cursor()
         cursor.execute(
             'SELECT username, count(username) '
             'FROM validation_table '
@@ -516,6 +505,7 @@ def calculate_user_contribution():
             'SELECT count(1) from validation_table '
             'WHERE bounding_box_bounds != "None";')
         count_with_bounding_box = int(cursor.fetchone()[0])
+        cursor.close()
         percent_with_bounding_box = (
             100.0 * count_with_bounding_box / total_count)
         return json.dumps({
@@ -537,11 +527,7 @@ def user_validation_summary():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        thread_id = threading.get_ident()
-        if thread_id not in DB_CONN_THREAD_MAP:
-            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                DATABASE_PATH)
-        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor = get_db_cursor()
         # rows validated
         cursor.execute(
             'SELECT '
@@ -552,6 +538,7 @@ def user_validation_summary():
             'INNER JOIN validation_table on  '
             'validation_table.key = base_table.key;')
         key_metadata_list = list(cursor.fetchall())
+        cursor.close()
 
         return flask.render_template(
             'user_validation_summary.html', **{
@@ -586,11 +573,7 @@ def process_point(point_id):
     flush_visited_point_id_timestamp()
     VISITED_POINT_ID_TIMESTAMP_MAP[point_id] = time.time()
     try:
-        thread_id = threading.get_ident()
-        if thread_id not in DB_CONN_THREAD_MAP:
-            DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                DATABASE_PATH)
-        cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+        cursor = get_db_cursor()
         cursor.execute(
             'SELECT '
             'database_id, source_key, description, source_point_wkt '
@@ -604,6 +587,7 @@ def process_point(point_id):
             'SELECT bounding_box_bounds, metadata '
             'from validation_table WHERE key = ?', (point_id,))
         payload = cursor.fetchone()
+        cursor.close()
 
         # make a default metadata object just in case it's not defined
         metadata = {
@@ -696,28 +680,19 @@ def validation_queue_worker():
                     payload['bounding_box_bounds']['_southWest'],
                     payload['bounding_box_bounds']['_northEast']]
             while True:
-                try:
-                    thread_id = threading.get_ident()
-                    if thread_id not in DB_CONN_THREAD_MAP:
-                        DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-                            DATABASE_PATH)
-                    cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
-                    cursor.execute('SELECT max(id) FROM validation_table;')
-                    max_validation_id = cursor.fetchone()[0]
-                    cursor.execute(
-                        'INSERT OR REPLACE INTO validation_table '
-                        'VALUES (?, ?, ?, ?, ?, ?);',
-                        (str(bounding_box_bounds), payload['point_id'],
-                         json.dumps(payload['metadata']),
-                         username,
-                         str(datetime.datetime.utcnow()),
-                         max_validation_id+1))
-                    break
-                except:
-                    LOGGER.exception(
-                        "error opening the database, trying again")
-                    time.sleep(1)
-            DB_CONN_THREAD_MAP[threading.get_ident()].commit()
+                cursor = get_db_cursor()
+                cursor.execute('SELECT max(id) FROM validation_table;')
+                max_validation_id = cursor.fetchone()[0]
+                cursor.execute(
+                    'INSERT OR REPLACE INTO validation_table '
+                    'VALUES (?, ?, ?, ?, ?, ?);',
+                    (str(bounding_box_bounds), payload['point_id'],
+                     json.dumps(payload['metadata']),
+                     username,
+                     str(datetime.datetime.utcnow()),
+                     max_validation_id+1))
+                cursor.close()
+                break
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -789,11 +764,7 @@ def build_base_validation_db(
         CREATE UNIQUE INDEX IF NOT EXISTS validation_table_id_index
         ON validation_table (id);
         """)
-    thread_id = threading.get_ident()
-    if thread_id not in DB_CONN_THREAD_MAP:
-        DB_CONN_THREAD_MAP[threading.get_ident()] = sqlite3.connect(
-            DATABASE_PATH)
-    cursor = DB_CONN_THREAD_MAP[threading.get_ident()].cursor()
+    cursor = get_db_cursor()
     cursor.executescript(sql_create_projects_table)
 
     next_feature_id = 0
@@ -815,8 +786,7 @@ def build_base_validation_db(
                 (database_id, base_db_key, description,
                  geom_wkt, next_feature_id))
             next_feature_id += 1
-    DB_CONN_THREAD_MAP[threading.get_ident()].commit()
-
+    cursor.close()
     with open(complete_token_path, 'w') as token_file:
         token_file.write(str(datetime.datetime.now()))
 
@@ -828,6 +798,17 @@ def download_and_unzip(url, target_path, token_file):
         if target_path.endswith('zip'):
             with zipfile.ZipFile(target_path, 'r') as zip_ref:
                 zip_ref.extractall(os.path.dirname(target_path))
+
+
+def get_db_cursor():
+    """Get the database connection and cursor."""
+    thread_id = threading.get_ident()
+    if thread_id not in DB_CONN_THREAD_MAP:
+        DB_CONN_THREAD_MAP[thread_id] = sqlite3.connect(DATABASE_PATH)
+    connection = DB_CONN_THREAD_MAP[thread_id]
+    connection.commit()
+    return connection.cursor()
+
 
 if __name__ == '__main__':
     DB_CONN_THREAD_MAP = {}
