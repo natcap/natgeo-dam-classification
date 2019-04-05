@@ -190,17 +190,23 @@
             bounding_box.setStyle({color: "#22ff22", weight: 3});
             map.panTo(bounding_box.getCenter());
             map.fitBounds(bounding_box.getBounds());
-            $('#nextpoint').html(
-                'Submit/Go To Next Dam <b>(press enter)</b>');
-            $('#mapid').keydown(function (e){
-                if(e.keyCode == 13){
-                    $('#nextpoint').prop('disabled',true).css('opacity', 0.5);
-                    $('#nextpoint').html('Submitting...');
-                    post_to_server(e);
-                }
-            })
+            enable_enter();
         }
     });
+
+    $('input[type=checkbox]').click(enable_enter);
+
+    function enable_enter() {
+        $('#nextpoint').html(
+            'Submit/Go To Next Dam <b>(press enter)</b>');
+        $(document).keydown(function (e){
+            if(e.keyCode == 13){
+                $('#nextpoint').prop('disabled',true).css('opacity', 0.5);
+                $('#nextpoint').html('Submitting...');
+                post_to_server(e);
+            }
+        })
+    }
 
     function post_to_server(e){
         var payload = {
@@ -258,6 +264,7 @@
     };
 
     $('textarea#username').bind('input propertychange', set_username_session);
+    $('textarea#comments').bind('input propertychange', enable_enter);
     {% for checkbox_id, checked in checkbox_values.items() %}
         $('input#{{ checkbox_id }} ').prop('checked', '{{ checked }}' == 'True');
     {% endfor %}

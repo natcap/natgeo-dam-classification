@@ -669,6 +669,7 @@ def validation_queue_worker():
     try:
         while True:
             payload, username = VALIDATION_INSERT_QUEUE.get()
+            username = username.replace('\n','').rstrip()
             if username not in ACTIVE_USERS_MAP:
                 ACTIVE_USERS_MAP[username] = (1, time.time())
             else:
