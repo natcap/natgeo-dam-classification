@@ -31,8 +31,10 @@ def main():
     print(f'median: {numpy.median(bb_diag_len_list)}')
     print(f'max: {numpy.max(bb_diag_len_list)}')
     print(f'min: {numpy.min(bb_diag_len_list)}')
-
-    n, bins, patches = plt.hist(bb_diag_len_list, bins=100)
+    bb_diag_len_list = sorted(bb_diag_len_list)
+    x = int(len(bb_diag_len_list) * .02)
+    print(x)
+    n, bins, patches = plt.hist(bb_diag_len_list[x:-x], bins=100)
     plt.show()
 
 
