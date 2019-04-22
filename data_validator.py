@@ -684,6 +684,8 @@ def validation_queue_worker():
                 cursor = get_db_cursor()
                 cursor.execute('SELECT max(id) FROM validation_table;')
                 max_validation_id = cursor.fetchone()[0]
+                if max_validation_id is None:
+                    max_validation_id = -1
                 cursor.execute(
                     'INSERT OR REPLACE INTO validation_table '
                     'VALUES (?, ?, ?, ?, ?, ?);',
@@ -765,7 +767,8 @@ def build_base_validation_db(
         CREATE UNIQUE INDEX IF NOT EXISTS validation_table_id_index
         ON validation_table (id);
         """)
-    cursor = get_db_cursor()
+    connection = get_db_connection()
+    cursor = connection.cursor()
     cursor.executescript(sql_create_projects_table)
 
     next_feature_id = 0
@@ -788,6 +791,8 @@ def build_base_validation_db(
                  geom_wkt, next_feature_id))
             next_feature_id += 1
     cursor.close()
+    connection.commit()
+
     with open(complete_token_path, 'w') as token_file:
         token_file.write(str(datetime.datetime.now()))
 
@@ -809,6 +814,14 @@ def get_db_cursor():
     connection = DB_CONN_THREAD_MAP[thread_id]
     connection.commit()
     return connection.cursor()
+
+
+def get_db_connection():
+    thread_id = threading.get_ident()
+    if thread_id not in DB_CONN_THREAD_MAP:
+        DB_CONN_THREAD_MAP[thread_id] = sqlite3.connect(DATABASE_PATH)
+    connection = DB_CONN_THREAD_MAP[thread_id]
+    return connection
 
 
 if __name__ == '__main__':
