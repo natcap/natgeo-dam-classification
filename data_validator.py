@@ -47,6 +47,7 @@ REPORTING_INTERVAL = 5.0
 DEFAULT_COMMENT_BOX_TEXT = '(optional comments)'
 DEFAULT_NAME_TEXT = '(enter your name or initials)'
 ACTIVE_DELAY = 30.0  # wait this many seconds before trying point again
+MAX_ATTEMPTS = 10
 
 
 def parse_shapefile(db_key, description_key, filter_tuple):
@@ -341,7 +342,8 @@ def get_unvalidated_point():
     LOGGER.info('trying to get an unvalidated point')
     point_id_to_process = None
     try:
-        cursor = get_db_cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         # Try to get an unvalidated non NID point
         flush_visited_point_id_timestamp()
         while True:
@@ -400,6 +402,7 @@ def get_unvalidated_point():
                             break
             break
         cursor.close()
+        connection.commit()
         return process_point(unvalidated_point_id)
     except:
         LOGGER.exception('exception in unvalidated')
@@ -438,7 +441,8 @@ def render_summary():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        cursor = get_db_cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         cursor.execute('SELECT count(1) FROM base_table')
         total_count = cursor.fetchone()[0]
 
@@ -462,8 +466,8 @@ def render_summary():
                 (point.y, point.x) for point in user_point_list]
             user_color_point_list.append(
                 (user_color, user_valid_point_list))
-
         cursor.close()
+        connection.commit()
         return flask.render_template(
             'summary.html', **{
                 'total_count': total_count,
@@ -480,7 +484,8 @@ def calculate_user_contribution():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        cursor = get_db_cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         cursor.execute(
             'SELECT username, count(username) '
             'FROM validation_table '
@@ -506,6 +511,7 @@ def calculate_user_contribution():
             'WHERE bounding_box_bounds != "None";')
         count_with_bounding_box = int(cursor.fetchone()[0])
         cursor.close()
+        connection.commit()
         percent_with_bounding_box = (
             100.0 * count_with_bounding_box / total_count)
         return json.dumps({
@@ -527,7 +533,8 @@ def user_validation_summary():
     if VALIDATAION_WORKER_DIED:
         return "VALIDATAION WORKER DIED. TELL LISA!"
     try:
-        cursor = get_db_cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         # rows validated
         cursor.execute(
             'SELECT '
@@ -539,6 +546,7 @@ def user_validation_summary():
             'validation_table.key = base_table.key;')
         key_metadata_list = list(cursor.fetchall())
         cursor.close()
+        connection.commit()
 
         return flask.render_template(
             'user_validation_summary.html', **{
@@ -573,7 +581,8 @@ def process_point(point_id):
     flush_visited_point_id_timestamp()
     VISITED_POINT_ID_TIMESTAMP_MAP[point_id] = time.time()
     try:
-        cursor = get_db_cursor()
+        connection = get_db_connection()
+        cursor = connection.cursor()
         cursor.execute(
             'SELECT '
             'database_id, source_key, description, source_point_wkt '
@@ -588,6 +597,7 @@ def process_point(point_id):
             'from validation_table WHERE key = ?', (point_id,))
         payload = cursor.fetchone()
         cursor.close()
+        connection.commit()
 
         # make a default metadata object just in case it's not defined
         metadata = {
@@ -680,22 +690,31 @@ def validation_queue_worker():
                 bounding_box_bounds = [
                     payload['bounding_box_bounds']['_southWest'],
                     payload['bounding_box_bounds']['_northEast']]
+            attempts = 0
             while True:
-                cursor = get_db_cursor()
-                cursor.execute('SELECT max(id) FROM validation_table;')
-                max_validation_id = cursor.fetchone()[0]
-                if max_validation_id is None:
-                    max_validation_id = -1
-                cursor.execute(
-                    'INSERT OR REPLACE INTO validation_table '
-                    'VALUES (?, ?, ?, ?, ?, ?);',
-                    (str(bounding_box_bounds), payload['point_id'],
-                     json.dumps(payload['metadata']),
-                     username,
-                     str(datetime.datetime.utcnow()),
-                     max_validation_id+1))
-                cursor.close()
-                break
+                try:
+                    connection = get_db_connection()
+                    cursor = connection.cursor()
+                    cursor.execute('SELECT max(id) FROM validation_table;')
+                    max_validation_id = cursor.fetchone()[0]
+                    if max_validation_id is None:
+                        max_validation_id = -1
+                    cursor.execute(
+                        'INSERT OR REPLACE INTO validation_table '
+                        'VALUES (?, ?, ?, ?, ?, ?);',
+                        (str(bounding_box_bounds), payload['point_id'],
+                         json.dumps(payload['metadata']),
+                         username,
+                         str(datetime.datetime.utcnow()),
+                         max_validation_id+1))
+                    cursor.close()
+                    connection.commit()
+                    break
+                except sqlite3.OperationalError:
+                    if attempts > MAX_ATTEMPTS:
+                        raise
+                    LOGGER.exception(
+                        f"attempted {attempts} times, trying again")
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -804,16 +823,6 @@ def download_and_unzip(url, target_path, token_file):
         if target_path.endswith('zip'):
             with zipfile.ZipFile(target_path, 'r') as zip_ref:
                 zip_ref.extractall(os.path.dirname(target_path))
-
-
-def get_db_cursor():
-    """Get the database connection and cursor."""
-    thread_id = threading.get_ident()
-    if thread_id not in DB_CONN_THREAD_MAP:
-        DB_CONN_THREAD_MAP[thread_id] = sqlite3.connect(DATABASE_PATH)
-    connection = DB_CONN_THREAD_MAP[thread_id]
-    connection.commit()
-    return connection.cursor()
 
 
 def get_db_connection():
