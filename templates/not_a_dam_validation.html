@@ -93,21 +93,32 @@
             dataType: 'json',
             data: JSON.stringify(payload),
             error: function (request, status, error) {
+                console.log('error');
                 console.log(request.responseText);
                 console.log(status);
                 console.log(error);
             },
-            success: function () {
-                location.reload();
+            success: function (data) {
+                console.log('success');
+                console.log(data["image_url"]);
+                $('#dam_image').html(
+                    "<img src=\"" + data["image_url"] + "\"/>");
+                enable_button();
             }
         });
     };
 
-    $('#no_dam').click(function (e) {
-        $('#no_dam').prop('disabled',true).css('opacity',0.5);
-        $('#no_dam').html('Submitting...');
-        post_to_server(e);
-    });
+    function enable_button() {
+        $('#no_dam').prop('disabled',false).css('opacity',1.0);
+        $('#no_dam').text('No dam in this image.');
+        $('#no_dam').click(function (e) {
+            $('#no_dam').prop('disabled',true).css('opacity',0.5);
+            $('#no_dam').text('Submitting...');
+            post_to_server(e);
+        });
+    }
+
+    enable_button();
 
 </script>
 </html>

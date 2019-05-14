@@ -66,7 +66,7 @@ def update_is_a_dam():
     """Called when there is a dam image that's classified."""
     payload = json.loads(flask.request.data.decode('utf-8'))
     LOGGER.debug(payload)
-    return True
+    return flask.jsonify({'image_url': 'image_url_goes_here'})
 
 @APP.route('/summary')
 def render_summary():
