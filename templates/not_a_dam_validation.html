@@ -103,16 +103,11 @@
         });
     };
 
-    $('#nextpoint').click(function (e) {
-        $('#nextpoint').prop('disabled',true).css('opacity',0.5);
-        $('#nextpoint').html('Submitting...');
+    $('#no_dam').click(function (e) {
+        $('#no_dam').prop('disabled',true).css('opacity',0.5);
+        $('#no_dam').html('Submitting...');
         post_to_server(e);
     });
-
-    $("#mapid").mouseenter(function(){
-        mouse_in_map = true;
-    }).mouseleave(function(){
-        mouse_in_map = false;
 
 </script>
 </html>
