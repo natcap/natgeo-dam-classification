@@ -160,8 +160,8 @@ if __name__ == '__main__':
         "SELECT count(1) "
         "FROM base_table "
         "WHERE dam_in_image is NULL;")
-    for payload in cursor:
-        LOGGER.debug(payload)
+    UNVALIDATED_IMAGE_COUNT = int(cursor.fetchone()[0])
+    LOGGER.debug(UNVALIDATED_IMAGE_COUNT)
     cursor.close()
     connection.commit()
 
