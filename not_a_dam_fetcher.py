@@ -146,11 +146,24 @@ if __name__ == '__main__':
     image_candidate_thread.start()
     dabase_complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
-    TASK_GRAPH.add_task(
+    build_db_task = TASK_GRAPH.add_task(
         func=build_image_db,
         args=(DATABASE_PATH, dabase_complete_token_path),
         target_path_list=[dabase_complete_token_path],
         ignore_path_list=[DATABASE_PATH],
         task_name='build the dam database')
+    build_db_task.join()
+
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT count(1) "
+        "FROM base_table "
+        "WHERE dam_in_image is NULL;")
+    for payload in cursor:
+        LOGGER.debug(payload)
+    cursor.close()
+    connection.commit()
+
     APP.run(host='0.0.0.0', port=8080)
     # this makes a connection per thread
