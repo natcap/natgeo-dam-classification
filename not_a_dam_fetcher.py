@@ -87,25 +87,30 @@ def render_summary():
     return 'summary page'
 
 
+@retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
 def download_url_op(url, target_path, skip_if_target_exists=False):
     """Download `url` to `target_path`."""
-    if skip_if_target_exists and os.path.exists(target_path):
-        LOGGER.info('target exists %s', target_path)
-        return
-    with open(target_path, 'wb') as target_file:
-        url_stream = requests.get(url, stream=True, timeout=REQUEST_TIMEOUT)
-        file_size = int(url_stream.headers["Content-Length"])
-        LOGGER.info(
-            "Downloading: %s Bytes: %s" % (target_path, file_size))
-        downloaded_so_far = 0
-        block_size = 2**20
-        for data_buffer in url_stream.iter_content(chunk_size=block_size):
-            downloaded_so_far += len(data_buffer)
-            target_file.write(data_buffer)
-            status = r"%s: %10d [%3.2f%%]" % (
-                os.path.basename(target_path),
-                downloaded_so_far, downloaded_so_far * 100. / file_size)
-            LOGGER.info(status)
+    try:
+        if skip_if_target_exists and os.path.exists(target_path):
+            LOGGER.info('target exists %s', target_path)
+            return
+        with open(target_path, 'wb') as target_file:
+            url_stream = requests.get(url, stream=True, timeout=REQUEST_TIMEOUT)
+            file_size = int(url_stream.headers["Content-Length"])
+            LOGGER.info(
+                "Downloading: %s Bytes: %s" % (target_path, file_size))
+            downloaded_so_far = 0
+            block_size = 2**20
+            for data_buffer in url_stream.iter_content(chunk_size=block_size):
+                downloaded_so_far += len(data_buffer)
+                target_file.write(data_buffer)
+                status = r"%s: %10d [%3.2f%%]" % (
+                    os.path.basename(target_path),
+                    downloaded_so_far, downloaded_so_far * 100. / file_size)
+                LOGGER.info(status)
+    except:
+        LOGGER.exception('exception occured')
+        raise
 
 
 def image_candidate_worker():
