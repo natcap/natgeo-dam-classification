@@ -95,8 +95,7 @@ def download_url_op(url, target_path, skip_if_target_exists=False):
         return
     with open(target_path, 'wb') as target_file:
         url_stream = requests.get(url, stream=True, timeout=REQUEST_TIMEOUT)
-        meta = url_stream.info()
-        file_size = int(meta["Content-Length"])
+        file_size = int(url_stream.headers["Content-Length"])
         LOGGER.info(
             "Downloading: %s Bytes: %s" % (target_path, file_size))
         downloaded_so_far = 0
