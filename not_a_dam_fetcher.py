@@ -267,7 +267,7 @@ def image_candidate_worker():
                         stiched_image_path)
 
                 stitched_info = pygeoprocessing.get_raster_info(
-                    stiched_image_path)['pixel_size']
+                    stiched_image_path)
                 pixel_size = stitched_info['pixel_size']
                 clipped_gsw_tile_path = os.path.join(
                     NOT_DAM_IMAGERY_DIR,
