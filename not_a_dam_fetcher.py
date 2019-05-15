@@ -38,7 +38,7 @@ APP = Flask(__name__, static_url_path='', static_folder='')
 APP.config['SECRET_KEY'] = b'\xe2\xa9\xd2\x82\xd5r\xef\xdb\xffK\x97\xcfM\xa2WH'
 WORKSPACE_DIR = 'workspace_not_a_dam'
 PLANET_QUADS_DIR = os.path.join(WORKSPACE_DIR, 'planet_quads')
-DAM_IMAGERY_DIR = os.path.join(WORKSPACE_DIR, 'dam_images')
+NOT_DAM_IMAGERY_DIR = os.path.join(WORKSPACE_DIR, 'not_dam_images')
 GSW_DIR = os.path.join(WORKSPACE_DIR, 'gsw_tiles')
 PLANET_STITCHED_IMAGERY_DIR = os.path.join(PLANET_QUADS_DIR, 'stiched_images')
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'not_a_dam.db')
@@ -261,6 +261,17 @@ def image_candidate_worker():
                     stitch_rasters(
                         quad_download_dict['quad_target_path_list'],
                         stiched_image_path)
+
+                pixel_size = pygeoprocessing.get_raster_info(
+                    stiched_image_path)['pixel_size']
+                clipped_gsw_tile_path = os.path.join(
+                    NOT_DAM_IMAGERY_DIR,
+                    '_'.join([str(_) for _ in quad_download_dict[
+                        'dam_lat_lng_bb']])+'.tif')
+                pygeoprocessing.warp_raster(
+                    stiched_image_path, pixel_size,
+                    clipped_gsw_tile_path, 'near',
+                    target_bb=quad_download_dict['dam_lat_lng_bb'])
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -354,7 +365,9 @@ def get_bounding_box_quads(
 
 
 if __name__ == '__main__':
-    for dir_path in [PLANET_QUADS_DIR, DAM_IMAGERY_DIR, GSW_DIR]:
+    for dir_path in [
+            PLANET_QUADS_DIR, NOT_DAM_IMAGERY_DIR, GSW_DIR,
+            PLANET_STITCHED_IMAGERY_DIR]:
         try:
             os.makedirs(dir_path)
         except OSError:
