@@ -42,6 +42,12 @@ DAM_STATUS_DB_PATH = os.path.join(WORKSPACE_DIR, 'dam_status.db')
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 NOT_A_DAM_IMAGES_TO_CACHE = 10
+MAX_GSW_TRIES = 4096
+BOUNDING_BOX_SIZE_M = 2000.0
+PLANET_QUAD_CELL_SIZE = 4.77731
+MIN_SURFACE_WATER = 20
+MAX_SURFACE_WATER = 80
+
 
 
 @APP.route('/favicon.ico')
@@ -114,6 +120,44 @@ def image_candidate_worker():
                     src_url, surface_water_raster_path,
                     skip_if_target_exists=True)
                 LOGGER.info('downloaded!')
+                gsw_raster = gdal.Open(
+                    surface_water_raster_path, gdal.OF_RASTER)
+                gsw_band = gsw_raster.GetRasterBand(1)
+                box_size = int((BOUNDING_BOX_SIZE_M / PLANET_QUAD_CELL_SIZE))
+
+                tries = 0
+                while True:
+                    tries += 1
+                    if tries >= MAX_GSW_TRIES:
+                        break
+                    # we expect the raster to be square so it's okay to use XSize for
+                    # both dimensions so pick a point in the range of the quad
+                    ul_x = int(numpy.random.randint(
+                        0, gsw_band.XSize-box_size, dtype=numpy.int32))
+                    ul_y = int(numpy.random.randint(
+                        0, gsw_band.YSize-box_size, dtype=numpy.int32))
+                    sample_block = gsw_band.ReadAsArray(
+                        xoff=ul_x, yoff=ul_y, win_xsize=box_size,
+                        win_ysize=box_size)
+                    # search for pixels there that include edge surface water
+                    partial_samples = numpy.argwhere(
+                        (sample_block > MIN_SURFACE_WATER) &
+                        (sample_block < MAX_SURFACE_WATER))
+
+                    # if we found at least 20 percent of the pixels are
+                    # partial water samples.
+                    if partial_samples.size > (.2*sample_block.size):
+                        break
+
+                if tries >= MAX_GSW_TRIES:
+                    LOGGER.error("COULDN'T FIND A BOUNDING BOX")
+                    IMAGE_CANDIDATE_QUEUE.put(1)
+                    continue
+
+                LOGGER.info("now pull a planet quad")
+
+
+
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
