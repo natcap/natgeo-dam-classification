@@ -267,12 +267,15 @@ def image_candidate_worker():
                 clipped_gsw_tile_path = os.path.join(
                     NOT_DAM_IMAGERY_DIR,
                     '_'.join([str(_) for _ in quad_download_dict[
-                        'dam_lat_lng_bb']])+'.tif')
-                LOGGER.debug('clipping to %s', clipped_gsw_tile_path)
+                        'dam_lat_lng_bb']])+'.png')
+                LOGGER.debug(
+                    'clipping to %s %s', clipped_gsw_tile_path,
+                    quad_download_dict['dam_lat_lng_bb'])
                 pygeoprocessing.warp_raster(
                     stiched_image_path, pixel_size,
                     clipped_gsw_tile_path, 'near',
                     target_bb=quad_download_dict['dam_lat_lng_bb'])
+                LOGGER.debug('clipped %s', clipped_gsw_tile_path)
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
