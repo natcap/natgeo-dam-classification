@@ -216,6 +216,10 @@ def image_candidate_worker():
                     'quad_target_path_list': [],
                     'dam_lat_lng_bb': [min_x, min_y, max_x, max_y]
                 }
+                if not mosaic_quad_response_dict['items']:
+                    LOGGER.error("NO PLANET COVERAGE HERE, TRYING AGAIN")
+                    IMAGE_CANDIDATE_QUEUE.put(1)
+                    continue
                 for mosaic_item in mosaic_quad_response_dict['items']:
                     quad_download_url = (mosaic_item['_links']['download'])
                     quad_download_raster_path = os.path.join(
