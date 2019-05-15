@@ -41,7 +41,9 @@ PLANET_STITCHED_IMAGERY_DIR = os.path.join(PLANET_QUADS_DIR, 'stiched_images')
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'not_a_dam.db')
 DAM_STATUS_DB_PATH = os.path.join(WORKSPACE_DIR, 'dam_status.db')
 PLANET_API_KEY_FILE = 'planet_api_key.txt'
+ACTIVE_MOSAIC_JSON_PATH = os.path.join(WORKSPACE_DIR, 'active_mosaic.json')
 N_WORKERS = -1
+REQUEST_TIMEOUT = 1.0
 REPORTING_INTERVAL = 5.0
 NOT_A_DAM_IMAGES_TO_CACHE = 10
 MAX_GSW_TRIES = 4096
@@ -259,6 +261,35 @@ if __name__ == '__main__':
 
     session = requests.Session()
     session.auth = (planet_api_key, '')
+
+    if not os.path.exists(ACTIVE_MOSAIC_JSON_PATH):
+        mosaics_json = session.get(
+            'https://api.planet.com/basemaps/v1/mosaics',
+            timeout=REQUEST_TIMEOUT)
+        most_recent_date = ''
+        active_mosaic = None
+        for mosaic_data in mosaics_json.json()['mosaics']:
+            if mosaic_data['interval'] != '3 mons':
+                continue
+            last_acquired_date = mosaic_data['last_acquired']
+            LOGGER.debug(last_acquired_date)
+            if last_acquired_date > most_recent_date:
+                most_recent_date = last_acquired_date
+                active_mosaic = mosaic_data
+        with open(ACTIVE_MOSAIC_JSON_PATH, 'w') as active_mosaic_file:
+            active_mosaic_file.write(json.dumps(active_mosaic))
+    else:
+        with open(ACTIVE_MOSAIC_JSON_PATH, 'r') as active_mosaic_file:
+            active_mosaic = json.load(active_mosaic_file)
+
+    LOGGER.debug(
+        'using this mosaic: '
+        f"""{active_mosaic['last_acquired']} {active_mosaic['interval']} {
+            active_mosaic['grid']['resolution']}""")
+
+    MOSAIC_QUAD_LIST_URL = (
+        f"""https://api.planet.com/basemaps/v1/mosaics/"""
+        f"""{active_mosaic['id']}/quads""")
 
     DB_CONN_THREAD_MAP = {}
     TASK_GRAPH = taskgraph.TaskGraph(
