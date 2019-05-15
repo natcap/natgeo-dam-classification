@@ -1,7 +1,6 @@
 """Flask app to validata imagery and point locations."""
 import requests
 import queue
-import urllib
 import json
 import datetime
 import sqlite3
@@ -100,10 +99,7 @@ def download_url_op(url, target_path, skip_if_target_exists=False):
             "Downloading: %s Bytes: %s" % (target_path, file_size))
         downloaded_so_far = 0
         block_size = 2**20
-        while True:
-            data_buffer = url_stream.read(block_size)
-            if not data_buffer:
-                break
+        for data_buffer in url_stream.iter_content(chunk_size=block_size):
             downloaded_so_far += len(data_buffer)
             target_file.write(data_buffer)
             status = r"%s: %10d [%3.2f%%]" % (
