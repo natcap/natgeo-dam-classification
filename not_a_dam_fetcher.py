@@ -268,6 +268,7 @@ def image_candidate_worker():
                     NOT_DAM_IMAGERY_DIR,
                     '_'.join([str(_) for _ in quad_download_dict[
                         'dam_lat_lng_bb']])+'.tif')
+                LOGGER.debug('clipping to %s', clipped_gsw_tile_path)
                 pygeoprocessing.warp_raster(
                     stiched_image_path, pixel_size,
                     clipped_gsw_tile_path, 'near',
