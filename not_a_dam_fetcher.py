@@ -1,7 +1,6 @@
 """Flask app to validata imagery and point locations."""
 import queue
-import re
-import zipfile
+import urllib
 import json
 import datetime
 import sqlite3
@@ -11,8 +10,7 @@ import logging
 import threading
 import time
 
-import pandas
-import reproduce.utils
+import numpy
 import taskgraph
 import shapely.wkt
 import shapely.geometry
@@ -35,9 +33,12 @@ logging.getLogger('taskgraph').setLevel(logging.INFO)
 APP = Flask(__name__, static_url_path='', static_folder='')
 APP.config['SECRET_KEY'] = b'\xe2\xa9\xd2\x82\xd5r\xef\xdb\xffK\x97\xcfM\xa2WH'
 WORKSPACE_DIR = 'workspace_not_a_dam'
-
-APP_DATABASE_PATH = os.path.join(WORKSPACE_DIR)
+PLANET_QUADS_DIR = os.path.join(WORKSPACE_DIR, 'planet_quads')
+DAM_IMAGERY_DIR = os.path.join(WORKSPACE_DIR, 'dam_images')
+GSW_DIR = os.path.join(WORKSPACE_DIR, 'gsw_tiles')
+PLANET_STITCHED_IMAGERY_DIR = os.path.join(PLANET_QUADS_DIR, 'stiched_images')
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'not_a_dam.db')
+DAM_STATUS_DB_PATH = os.path.join(WORKSPACE_DIR, 'dam_status.db')
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 NOT_A_DAM_IMAGES_TO_CACHE = 10
@@ -68,6 +69,7 @@ def update_is_a_dam():
     LOGGER.debug(payload)
     return flask.jsonify({'image_url': 'image_url_goes_here'})
 
+
 @APP.route('/summary')
 def render_summary():
     """Get a point that has not been validated."""
@@ -82,7 +84,36 @@ def image_candidate_worker():
             if n_dams_to_fetch == 'STOP':
                 return
             for _ in range(n_dams_to_fetch):
-                pass
+                lng = numpy.random.random()*360-180
+                lat = numpy.random.random()*180-90
+
+                # take the ceil to the nearest 10
+                lng = int(numpy.floor(lng*0.1)*10)
+                if lng < 0:
+                    lng_dir = 'W'
+                    lng = abs(lng)
+                else:
+                    lng_dir = 'E'
+
+                # take the ceil to the nearest 10
+                lat = int(numpy.ceil(lat*0.1)*10)
+                if lat < 0:
+                    lat_dir = 'S'
+                    lat = abs(lat)
+                else:
+                    lat_dir = 'N'
+
+                src_url = (
+                    f'http://storage.googleapis.com/global-surface-water/'
+                    f'downloads/occurrence/occurrence_'
+                    f'{lng}{lng_dir}_{lat}{lat_dir}.tif')
+                LOGGER.info("download a new GSW tile: %s", src_url)
+                surface_water_raster_path = os.path.join(
+                    GSW_DIR, os.path.basename(src_url))
+                download_url(
+                    src_url, surface_water_raster_path,
+                    skip_if_target_exists=True)
+                LOGGER.info('downloaded!')
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -145,11 +176,44 @@ def get_db_connection():
     return connection
 
 
+def download_url(url, target_path, skip_if_target_exists=False):
+    """Download `url` to `target_path`."""
+    if skip_if_target_exists and os.path.exists(target_path):
+        LOGGER.info('target exists %s', target_path)
+        return
+    with open(target_path, 'wb') as target_file:
+        url_stream = urllib.request.urlopen(url)
+        meta = url_stream.info()
+        file_size = int(meta["Content-Length"])
+        LOGGER.info(
+            "Downloading: %s Bytes: %s" % (target_path, file_size))
+        downloaded_so_far = 0
+        block_size = 2**20
+        while True:
+            data_buffer = url_stream.read(block_size)
+            if not data_buffer:
+                break
+            downloaded_so_far += len(data_buffer)
+            target_file.write(data_buffer)
+            status = r"%s: %10d [%3.2f%%]" % (
+                os.path.basename(target_path),
+                downloaded_so_far, downloaded_so_far * 100. / file_size)
+            LOGGER.info(status)
+
+
 if __name__ == '__main__':
+    for dir_path in [PLANET_QUADS_DIR, DAM_IMAGERY_DIR, GSW_DIR]:
+        try:
+            os.makedirs(dir_path)
+        except OSError:
+            pass
+
     DB_CONN_THREAD_MAP = {}
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
     IMAGE_CANDIDATE_QUEUE = queue.Queue()
+    IMAGE_CANDIDATE_QUEUE.put(1)
+    IMAGE_CANDIDATE_QUEUE.put('STOP')
     image_candidate_thread = threading.Thread(target=image_candidate_worker)
     image_candidate_thread.start()
     dabase_complete_token_path = os.path.join(os.path.dirname(
