@@ -94,7 +94,7 @@ def download_url_op(url, target_path, skip_if_target_exists=False):
         LOGGER.info('target exists %s', target_path)
         return
     with open(target_path, 'wb') as target_file:
-        url_stream = urllib.request.urlopen(url)
+        url_stream = requests.get(url, stream=True, timeout=REQUEST_TIMEOUT)
         meta = url_stream.info()
         file_size = int(meta["Content-Length"])
         LOGGER.info(
