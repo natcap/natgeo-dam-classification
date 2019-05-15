@@ -1,4 +1,5 @@
 """Flask app to validata imagery and point locations."""
+import requests
 import queue
 import urllib
 import json
@@ -39,6 +40,7 @@ GSW_DIR = os.path.join(WORKSPACE_DIR, 'gsw_tiles')
 PLANET_STITCHED_IMAGERY_DIR = os.path.join(PLANET_QUADS_DIR, 'stiched_images')
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'not_a_dam.db')
 DAM_STATUS_DB_PATH = os.path.join(WORKSPACE_DIR, 'dam_status.db')
+PLANET_API_KEY_FILE = 'planet_api_key.txt'
 N_WORKERS = -1
 REPORTING_INTERVAL = 5.0
 NOT_A_DAM_IMAGES_TO_CACHE = 10
@@ -252,12 +254,17 @@ if __name__ == '__main__':
         except OSError:
             pass
 
+    with open(PLANET_API_KEY_FILE, 'r') as planet_api_key_file:
+        planet_api_key = planet_api_key_file.read().rstrip()
+
+    session = requests.Session()
+    session.auth = (planet_api_key, '')
+
     DB_CONN_THREAD_MAP = {}
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
     IMAGE_CANDIDATE_QUEUE = queue.Queue()
     IMAGE_CANDIDATE_QUEUE.put(1)
-    IMAGE_CANDIDATE_QUEUE.put('STOP')
     image_candidate_thread = threading.Thread(target=image_candidate_worker)
     image_candidate_thread.start()
     dabase_complete_token_path = os.path.join(os.path.dirname(
