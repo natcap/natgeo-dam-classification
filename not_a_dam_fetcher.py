@@ -1,4 +1,6 @@
 """Flask app to validata imagery and point locations."""
+import shutil
+import subprocess
 import requests
 import queue
 import json
@@ -223,9 +225,42 @@ def image_candidate_worker():
                         quad_download_url)
                     quad_download_dict['quad_target_path_list'].append(
                         quad_download_raster_path)
+                    if os.path.exists(quad_download_raster_path):
+                        try:
+                            r = gdal.OpenEx(quad_download_raster_path)
+                            if not r:
+                                raise ValueError(
+                                    '%s not a raster' %
+                                    quad_download_raster_path)
+                        except:
+                            os.remove(quad_download_raster_path)
                     download_url_op(
                         quad_download_url, quad_download_raster_path,
                         skip_if_target_exists=True)
+
+                stiched_image_path = os.path.join(
+                    PLANET_STITCHED_IMAGERY_DIR,
+                    '_'.join([
+                        os.path.basename(path).replace('.tif', '')
+                        for path in sorted(
+                            quad_download_dict['quad_target_path_list'])]) + '.tif')
+                LOGGER.info("stiched image path: %s", stiched_image_path)
+                if os.path.exists(stiched_image_path):
+                    try:
+                        r = gdal.OpenEx(stiched_image_path)
+                        if not r:
+                            raise ValueError(
+                                '%s not a raster' %
+                                stiched_image_path)
+                    except:
+                        os.remove(stiched_image_path)
+                        stitch_rasters(
+                            quad_download_dict['quad_target_path_list'],
+                            stiched_image_path),
+                else:
+                    stitch_rasters(
+                        quad_download_dict['quad_target_path_list'],
+                        stiched_image_path)
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -286,6 +321,21 @@ def get_db_connection():
         DB_CONN_THREAD_MAP[thread_id] = sqlite3.connect(DATABASE_PATH)
     connection = DB_CONN_THREAD_MAP[thread_id]
     return connection
+
+
+def stitch_rasters(base_raster_path_list, target_raster_path):
+    """Merge base rasters into target."""
+    try:
+        os.makedirs(os.path.dirname(target_raster_path))
+    except OSError:
+        pass
+    LOGGER.debug(base_raster_path_list)
+    if len(base_raster_path_list) == 1:
+        shutil.copyfile(base_raster_path_list[0], target_raster_path)
+    else:
+        subprocess.run([
+            'python', 'gdal_merge.py', '-o', target_raster_path,
+            *base_raster_path_list])
 
 
 @retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
