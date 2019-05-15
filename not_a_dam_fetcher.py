@@ -18,9 +18,9 @@ import taskgraph
 import shapely.wkt
 import shapely.geometry
 from osgeo import gdal
-from flask import Flask
+from osgeo import osr
 import flask
-from osgeo import gdal
+from flask import Flask
 
 
 LOGGER = logging.getLogger(__name__)
@@ -262,8 +262,9 @@ def image_candidate_worker():
                         quad_download_dict['quad_target_path_list'],
                         stiched_image_path)
 
-                pixel_size = pygeoprocessing.get_raster_info(
+                stitched_info = pygeoprocessing.get_raster_info(
                     stiched_image_path)['pixel_size']
+                pixel_size = stitched_info['pixel_size']
                 clipped_gsw_tile_path = os.path.join(
                     NOT_DAM_IMAGERY_DIR,
                     '_'.join([str(_) for _ in quad_download_dict[
@@ -271,10 +272,18 @@ def image_candidate_worker():
                 LOGGER.debug(
                     'clipping to %s %s', clipped_gsw_tile_path,
                     quad_download_dict['dam_lat_lng_bb'])
+                projection_wkt = stitched_info['projection']
+
+                wgs84_srs = osr.SpatialReference()
+                wgs84_srs.ImportFromEPSG(4326)
+                bounding_box = pygeoprocessing.transform_bounding_box(
+                    quad_download_dict['dam_lat_lng_bb'],
+                    wgs84_srs.ExportToWkt(), projection_wkt, edge_samples=11)
+
                 pygeoprocessing.warp_raster(
                     stiched_image_path, pixel_size,
                     clipped_gsw_tile_path, 'near',
-                    target_bb=quad_download_dict['dam_lat_lng_bb'])
+                    target_bb=bounding_box)
                 LOGGER.debug('clipped %s', clipped_gsw_tile_path)
     except:
         LOGGER.exception('validation queue worker crashed.')
