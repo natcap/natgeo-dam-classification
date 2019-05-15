@@ -212,6 +212,10 @@ def image_candidate_worker():
                     download_url_op(
                         quad_download_url, quad_download_raster_path,
                         skip_if_target_exists=True)
+    except:
+        LOGGER.exception('validation queue worker crashed.')
+        global VALIDATAION_WORKER_DIED
+        VALIDATAION_WORKER_DIED = True
 
 
 @APP.after_request
