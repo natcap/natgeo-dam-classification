@@ -342,8 +342,10 @@ def stitch_rasters(base_raster_path_list, target_raster_path):
         pass
     LOGGER.debug(base_raster_path_list)
     if len(base_raster_path_list) == 1:
+        LOGGER.debug('copying....')
         shutil.copyfile(base_raster_path_list[0], target_raster_path)
     else:
+        LOGGER.debug('running a stitch to: %s', target_raster_path)
         subprocess.run([
             'python', 'gdal_merge.py', '-o', target_raster_path,
             *base_raster_path_list])
