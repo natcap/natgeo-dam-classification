@@ -9,8 +9,9 @@ import os
 import sys
 import logging
 import threading
-import time
 
+import pygeoprocessing
+from retrying import retry
 import numpy
 import taskgraph
 import shapely.wkt
@@ -18,6 +19,7 @@ import shapely.geometry
 from osgeo import gdal
 from flask import Flask
 import flask
+from osgeo import gdal
 
 
 LOGGER = logging.getLogger(__name__)
@@ -86,6 +88,31 @@ def render_summary():
     return 'summary page'
 
 
+def download_url_op(url, target_path, skip_if_target_exists=False):
+    """Download `url` to `target_path`."""
+    if skip_if_target_exists and os.path.exists(target_path):
+        LOGGER.info('target exists %s', target_path)
+        return
+    with open(target_path, 'wb') as target_file:
+        url_stream = urllib.request.urlopen(url)
+        meta = url_stream.info()
+        file_size = int(meta["Content-Length"])
+        LOGGER.info(
+            "Downloading: %s Bytes: %s" % (target_path, file_size))
+        downloaded_so_far = 0
+        block_size = 2**20
+        while True:
+            data_buffer = url_stream.read(block_size)
+            if not data_buffer:
+                break
+            downloaded_so_far += len(data_buffer)
+            target_file.write(data_buffer)
+            status = r"%s: %10d [%3.2f%%]" % (
+                os.path.basename(target_path),
+                downloaded_so_far, downloaded_so_far * 100. / file_size)
+            LOGGER.info(status)
+
+
 def image_candidate_worker():
     """Process validation queue."""
     try:
@@ -120,7 +147,7 @@ def image_candidate_worker():
                 LOGGER.info("download a new GSW tile: %s", src_url)
                 surface_water_raster_path = os.path.join(
                     GSW_DIR, os.path.basename(src_url))
-                download_url(
+                download_url_op(
                     src_url, surface_water_raster_path,
                     skip_if_target_exists=True)
                 LOGGER.info('downloaded!')
@@ -159,13 +186,32 @@ def image_candidate_worker():
                     continue
 
                 LOGGER.info("now pull a planet quad")
+                gsw_gt = pygeoprocessing.get_raster_info(
+                    surface_water_raster_path)['geotransform']
+                min_x, max_y = gdal.ApplyGeoTransform(gsw_gt, ul_x, ul_y)
+                max_x, min_y = gdal.ApplyGeoTransform(
+                    gsw_gt, ul_x+box_size, ul_y+box_size)
 
-
-
-    except:
-        LOGGER.exception('validation queue worker crashed.')
-        global VALIDATAION_WORKER_DIED
-        VALIDATAION_WORKER_DIED = True
+                mosaic_quad_response = get_bounding_box_quads(
+                    SESSION, MOSAIC_QUAD_LIST_URL, min_x, min_y, max_x, max_y)
+                mosaic_quad_response_dict = mosaic_quad_response.json()
+                quad_download_dict = {
+                    'quad_download_url_list':  [],
+                    'quad_target_path_list': [],
+                    'dam_lat_lng_bb': [min_x, min_y, max_x, max_y]
+                }
+                for mosaic_item in mosaic_quad_response_dict['items']:
+                    quad_download_url = (mosaic_item['_links']['download'])
+                    quad_download_raster_path = os.path.join(
+                        PLANET_QUADS_DIR, active_mosaic['id'],
+                        f'{mosaic_item["id"]}.tif')
+                    quad_download_dict['quad_download_url_list'].append(
+                        quad_download_url)
+                    quad_download_dict['quad_target_path_list'].append(
+                        quad_download_raster_path)
+                    download_url_op(
+                        quad_download_url, quad_download_raster_path,
+                        skip_if_target_exists=True)
 
 
 @APP.after_request
@@ -224,29 +270,19 @@ def get_db_connection():
     return connection
 
 
-def download_url(url, target_path, skip_if_target_exists=False):
-    """Download `url` to `target_path`."""
-    if skip_if_target_exists and os.path.exists(target_path):
-        LOGGER.info('target exists %s', target_path)
-        return
-    with open(target_path, 'wb') as target_file:
-        url_stream = urllib.request.urlopen(url)
-        meta = url_stream.info()
-        file_size = int(meta["Content-Length"])
-        LOGGER.info(
-            "Downloading: %s Bytes: %s" % (target_path, file_size))
-        downloaded_so_far = 0
-        block_size = 2**20
-        while True:
-            data_buffer = url_stream.read(block_size)
-            if not data_buffer:
-                break
-            downloaded_so_far += len(data_buffer)
-            target_file.write(data_buffer)
-            status = r"%s: %10d [%3.2f%%]" % (
-                os.path.basename(target_path),
-                downloaded_so_far, downloaded_so_far * 100. / file_size)
-            LOGGER.info(status)
+@retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
+def get_bounding_box_quads(
+        session, mosaic_quad_list_url, min_x, min_y, max_x, max_y):
+    """Query for mosaic via bounding box and retry if necessary."""
+    try:
+        mosaic_quad_response = session.get(
+            f'{mosaic_quad_list_url}?bbox={min_x},{min_y},{max_x},{max_y}',
+            timeout=REQUEST_TIMEOUT)
+        return mosaic_quad_response
+    except:
+        LOGGER.exception(
+            f"get_bounding_box_quads {min_x},{min_y},{max_x},{max_y} failed")
+        raise
 
 
 if __name__ == '__main__':
@@ -259,11 +295,11 @@ if __name__ == '__main__':
     with open(PLANET_API_KEY_FILE, 'r') as planet_api_key_file:
         planet_api_key = planet_api_key_file.read().rstrip()
 
-    session = requests.Session()
-    session.auth = (planet_api_key, '')
+    SESSION = requests.Session()
+    SESSION.auth = (planet_api_key, '')
 
     if not os.path.exists(ACTIVE_MOSAIC_JSON_PATH):
-        mosaics_json = session.get(
+        mosaics_json = SESSION.get(
             'https://api.planet.com/basemaps/v1/mosaics',
             timeout=REQUEST_TIMEOUT)
         most_recent_date = ''
