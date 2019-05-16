@@ -11,7 +11,6 @@ import sys
 import logging
 import threading
 
-import cv2
 import pygeoprocessing
 from retrying import retry
 import numpy
