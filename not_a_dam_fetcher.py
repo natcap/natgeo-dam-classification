@@ -172,8 +172,8 @@ def download_url_op(url, target_path, skip_if_target_exists=False):
 
 def image_candidate_worker():
     """Process validation queue."""
-    try:
-        while True:
+    while True:
+        try:
             n_dams_to_fetch = IMAGE_CANDIDATE_QUEUE.get()
             if n_dams_to_fetch == 'STOP':
                 return
@@ -350,10 +350,10 @@ def image_candidate_worker():
                         str(quad_download_dict['dam_lat_lng_bb'])))
                 cursor.close()
                 connection.commit()
-    except:
-        LOGGER.exception('validation queue worker crashed.')
-        global VALIDATAION_WORKER_DIED
-        VALIDATAION_WORKER_DIED = True
+        except:
+            LOGGER.exception('validation queue worker crashed.')
+            global VALIDATAION_WORKER_DIED
+            VALIDATAION_WORKER_DIED = True
 
 
 @APP.after_request
