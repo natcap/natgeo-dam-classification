@@ -290,7 +290,7 @@ def image_candidate_worker():
                     "INSERT INTO base_table (image_path, bounding_box) "
                     "VALUES (?, ?);", (
                         clipped_gsw_tile_path,
-                        quad_download_dict['dam_lat_lng_bb']))
+                        str(quad_download_dict['dam_lat_lng_bb'])))
                 cursor.close()
                 connection.commit()
     except:
