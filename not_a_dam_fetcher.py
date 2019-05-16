@@ -11,6 +11,7 @@ import sys
 import logging
 import threading
 
+import cv2
 import pygeoprocessing
 from retrying import retry
 import numpy
@@ -171,7 +172,9 @@ def image_candidate_worker():
                     continue
 
                 box_size = int((BOUNDING_BOX_SIZE_M / PLANET_QUAD_CELL_SIZE))
-
+                # this is the GSW pixel size in degrees time 110km / degree
+                # at the equator. Good enough for our approximate BB.
+                box_size = int((BOUNDING_BOX_SIZE_M / (.00025 * 110000)))
                 tries = 0
                 while True:
                     tries += 1
@@ -266,9 +269,6 @@ def image_candidate_worker():
                         quad_download_dict['quad_target_path_list'],
                         stiched_image_path)
 
-                stitched_info = pygeoprocessing.get_raster_info(
-                    stiched_image_path)
-                pixel_size = stitched_info['pixel_size']
                 clipped_gsw_tile_path = os.path.join(
                     NOT_DAM_IMAGERY_DIR,
                     '_'.join([str(_) for _ in quad_download_dict[
@@ -276,18 +276,12 @@ def image_candidate_worker():
                 LOGGER.debug(
                     'clipping to %s %s', clipped_gsw_tile_path,
                     quad_download_dict['dam_lat_lng_bb'])
-                projection_wkt = stitched_info['projection']
 
-                wgs84_srs = osr.SpatialReference()
-                wgs84_srs.ImportFromEPSG(4326)
-                bounding_box = pygeoprocessing.transform_bounding_box(
+                clip_raster(
+                    stiched_image_path,
                     quad_download_dict['dam_lat_lng_bb'],
-                    wgs84_srs.ExportToWkt(), projection_wkt, edge_samples=11)
-
-                pygeoprocessing.warp_raster(
-                    stiched_image_path, pixel_size,
-                    clipped_gsw_tile_path, 'near',
-                    target_bb=bounding_box)
+                    clipped_gsw_tile_path)
+                LOGGER.debug('clipped %s', clipped_gsw_tile_path)
                 LOGGER.debug('clipped %s', clipped_gsw_tile_path)
     except:
         LOGGER.exception('validation queue worker crashed.')
@@ -383,6 +377,40 @@ def get_bounding_box_quads(
         raise
 
 
+def clip_raster(
+        base_raster_path, lat_lng_bb, target_clipped_raster_path):
+    """Clip base against `lat_lng_bb`."""
+    base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+
+    wgs84_srs = osr.SpatialReference()
+    wgs84_srs.ImportFromEPSG(4326)
+
+    base_bounding_box = pygeoprocessing.transform_bounding_box(
+        lat_lng_bb, wgs84_srs.ExportToWkt(),
+        base_raster_info['projection'], edge_samples=11)
+
+    center_y = (base_bounding_box[1]+base_bounding_box[3])/2
+    center_x = (base_bounding_box[0]+base_bounding_box[2])/2
+
+    target_bounding_box = [
+        center_x-1000,
+        center_y-1000,
+        center_x+1000,
+        center_y+1000]
+
+    LOGGER.debug(base_bounding_box)
+    LOGGER.debug(target_bounding_box)
+
+    subprocess.run([
+        'gdal_translate',
+        '-projwin',
+        str(target_bounding_box[0]),
+        str(target_bounding_box[3]),
+        str(target_bounding_box[2]),
+        str(target_bounding_box[1]),
+        '-of', 'PNG', base_raster_path, target_clipped_raster_path])
+
+
 if __name__ == '__main__':
     for dir_path in [
             PLANET_QUADS_DIR, NOT_DAM_IMAGERY_DIR, GSW_DIR,
@@ -430,10 +458,6 @@ if __name__ == '__main__':
     DB_CONN_THREAD_MAP = {}
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
-    IMAGE_CANDIDATE_QUEUE = queue.Queue()
-    IMAGE_CANDIDATE_QUEUE.put(1)
-    image_candidate_thread = threading.Thread(target=image_candidate_worker)
-    image_candidate_thread.start()
     dabase_complete_token_path = os.path.join(os.path.dirname(
         DATABASE_PATH), f'{os.path.basename(DATABASE_PATH)}_COMPLETE')
     build_db_task = TASK_GRAPH.add_task(
@@ -443,6 +467,11 @@ if __name__ == '__main__':
         ignore_path_list=[DATABASE_PATH],
         task_name='build the dam database')
     build_db_task.join()
+
+    IMAGE_CANDIDATE_QUEUE = queue.Queue()
+    IMAGE_CANDIDATE_QUEUE.put(1)
+    image_candidate_thread = threading.Thread(target=image_candidate_worker)
+    image_candidate_thread.start()
 
     connection = get_db_connection()
     cursor = connection.cursor()
