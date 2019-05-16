@@ -360,6 +360,7 @@ def image_candidate_worker():
             LOGGER.exception('validation queue worker crashed.')
             global VALIDATAION_WORKER_DIED
             VALIDATAION_WORKER_DIED = True
+            IMAGE_CANDIDATE_QUEUE.put(n_dams_to_fetch-fetch_index)
 
 
 @APP.after_request
