@@ -282,7 +282,17 @@ def image_candidate_worker():
                     quad_download_dict['dam_lat_lng_bb'],
                     clipped_gsw_tile_path)
                 LOGGER.debug('clipped %s', clipped_gsw_tile_path)
-                LOGGER.debug('clipped %s', clipped_gsw_tile_path)
+
+                # insert into the database
+                connection = get_db_connection()
+                cursor = connection.cursor()
+                cursor.execute(
+                    "INSERT INTO base_table (image_path, bounding_box) "
+                    "VALUES (?, ?);", (
+                        clipped_gsw_tile_path,
+                        quad_download_dict['dam_lat_lng_bb']))
+                cursor.close()
+                connection.commit()
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
