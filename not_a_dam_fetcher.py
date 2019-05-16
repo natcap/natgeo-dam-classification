@@ -208,15 +208,14 @@ def image_candidate_worker():
                     src_url, surface_water_raster_path,
                     skip_if_target_exists=True)
                 LOGGER.info('downloaded!')
-                try:
-                    gsw_raster = gdal.Open(
-                        surface_water_raster_path, gdal.OF_RASTER)
-                    gsw_band = gsw_raster.GetRasterBand(1)
-                except:
-                    LOGGER.exception(
+                if not is_a_raster(surface_water_raster_path):
+                    LOGGER.error(
                         "couldn't open %s, deleting and trying again",
                         surface_water_raster_path)
-                    os.remove(surface_water_raster_path)
+                    try:
+                        os.remove(surface_water_raster_path)
+                    except OSError:
+                        pass
                     IMAGE_CANDIDATE_QUEUE.put(1)
                     continue
 
@@ -281,18 +280,17 @@ def image_candidate_worker():
                         quad_download_url)
                     quad_download_dict['quad_target_path_list'].append(
                         quad_download_raster_path)
-                    if os.path.exists(quad_download_raster_path):
-                        try:
-                            r = gdal.OpenEx(quad_download_raster_path)
-                            if not r:
-                                raise ValueError(
-                                    '%s not a raster' %
-                                    quad_download_raster_path)
-                        except:
-                            os.remove(quad_download_raster_path)
                     download_url_op(
                         quad_download_url, quad_download_raster_path,
                         skip_if_target_exists=True)
+                    if not is_a_raster(quad_download_raster_path):
+                        LOGGER.error(
+                            "couldn't open %s, deleting and trying again",
+                            quad_download_raster_path)
+                        try:
+                            os.remove(quad_download_raster_path)
+                        except OSError:
+                            pass
 
                 stitched_image_path = os.path.join(
                     PLANET_STITCHED_IMAGERY_DIR,
@@ -301,22 +299,19 @@ def image_candidate_worker():
                         for path in sorted(
                             quad_download_dict['quad_target_path_list'])]) + '.tif')
                 LOGGER.info("stitched image path: %s", stitched_image_path)
-                if os.path.exists(stitched_image_path):
-                    try:
-                        r = gdal.OpenEx(stitched_image_path)
-                        if not r:
-                            raise ValueError(
-                                '%s not a raster' %
-                                stitched_image_path)
-                    except:
-                        os.remove(stitched_image_path)
-                        stitch_rasters(
-                            quad_download_dict['quad_target_path_list'],
-                            stitched_image_path),
-                else:
-                    stitch_rasters(
-                        quad_download_dict['quad_target_path_list'],
+                stitch_rasters(
+                    quad_download_dict['quad_target_path_list'],
+                    stitched_image_path)
+                if not is_a_raster(stitched_image_path):
+                    LOGGER.error(
+                        "couldn't open %s, deleting and trying again",
                         stitched_image_path)
+                    try:
+                        os.remove(stitched_image_path)
+                    except OSError:
+                        pass
+                    IMAGE_CANDIDATE_QUEUE.put(1)
+                    continue
 
                 clipped_gsw_tile_path = os.path.normpath(os.path.join(
                     NOT_DAM_IMAGERY_DIR,
@@ -331,6 +326,16 @@ def image_candidate_worker():
                     quad_download_dict['dam_lat_lng_bb'],
                     clipped_gsw_tile_path)
                 LOGGER.debug('clipped %s', clipped_gsw_tile_path)
+                if not is_a_raster(clipped_gsw_tile_path):
+                    LOGGER.error(
+                        "couldn't open %s, deleting and trying again",
+                        clipped_gsw_tile_path)
+                    try:
+                        os.remove(clipped_gsw_tile_path)
+                    except OSError:
+                        pass
+                    IMAGE_CANDIDATE_QUEUE.put(1)
+                    continue
 
                 # insert into the database
                 connection = get_db_connection()
@@ -342,8 +347,6 @@ def image_candidate_worker():
                         str(quad_download_dict['dam_lat_lng_bb'])))
                 cursor.close()
                 connection.commit()
-                # all done get one more!
-                IMAGE_CANDIDATE_QUEUE.put(1)
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -471,6 +474,18 @@ def clip_raster(
         str(target_bounding_box[1]),
         '-of', 'PNG', base_raster_path, target_clipped_raster_path])
 
+
+def is_a_raster(path):
+    """Return true if path is raster."""
+    try:
+        if os.path.exists(path):
+            r = gdal.OpenEx(path, gdal.OF_RASTER)
+            if r:
+                return True
+            return False
+        return False
+    except:
+        return False
 
 if __name__ == '__main__':
     DB_CONN_THREAD_MAP = {}
