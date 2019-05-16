@@ -87,9 +87,10 @@ def update_is_a_dam():
     connection = get_db_connection()
     cursor = connection.cursor()
     cursor.execute(
-        "UPDATE base_table (dam_in_image) "
-        "VALUES (?);", (
-            payload['dam_in_image'])
+        "UPDATE base_table "
+        "SET dam_in_image = ? "
+        "WHERE image_path = ?",
+        (payload['dam_in_image'], payload['image_url']))
     cursor.close()
     connection.commit()
     return flask.jsonify({'image_url': get_unprocessed_image_path()})
@@ -444,6 +445,8 @@ def clip_raster(
 
 
 if __name__ == '__main__':
+    DB_CONN_THREAD_MAP = {}
+    APP.run(host='0.0.0.0', port=8080)
     for dir_path in [
             PLANET_QUADS_DIR, NOT_DAM_IMAGERY_DIR, GSW_DIR,
             PLANET_STITCHED_IMAGERY_DIR]:
@@ -451,7 +454,6 @@ if __name__ == '__main__':
             os.makedirs(dir_path)
         except OSError:
             pass
-
     with open(PLANET_API_KEY_FILE, 'r') as planet_api_key_file:
         planet_api_key = planet_api_key_file.read().rstrip()
 
@@ -487,7 +489,6 @@ if __name__ == '__main__':
         f"""https://api.planet.com/basemaps/v1/mosaics/"""
         f"""{active_mosaic['id']}/quads""")
 
-    DB_CONN_THREAD_MAP = {}
     TASK_GRAPH = taskgraph.TaskGraph(
         WORKSPACE_DIR, N_WORKERS, reporting_interval=REPORTING_INTERVAL)
     dabase_complete_token_path = os.path.join(os.path.dirname(
