@@ -69,13 +69,14 @@
 </body>
 <script type="text/javascript">
 
-    var image_url = "{{ image_url }}";
+    var image_url = String.raw`{{ image_url }}`;
 
     function post_to_server(e, dam_in_image){
         var payload = {
-            'dam_in_image': dam_in_image,
-            'image_url': image_url,
+            "dam_in_image": dam_in_image,
+            "image_url": image_url,
         };
+        console.log(payload["image_url"]);
         $.ajax({
             url: '/update_is_a_dam',
             type: 'POST',

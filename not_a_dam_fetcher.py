@@ -41,7 +41,7 @@ WORKSPACE_DIR = 'workspace_not_a_dam'
 PLANET_QUADS_DIR = os.path.join(WORKSPACE_DIR, 'planet_quads')
 NOT_DAM_IMAGERY_DIR = os.path.join(WORKSPACE_DIR, 'not_dam_images')
 GSW_DIR = os.path.join(WORKSPACE_DIR, 'gsw_tiles')
-PLANET_STITCHED_IMAGERY_DIR = os.path.join(PLANET_QUADS_DIR, 'stiched_images')
+PLANET_STITCHED_IMAGERY_DIR = os.path.join(PLANET_QUADS_DIR, 'stitched_images')
 DATABASE_PATH = os.path.join(WORKSPACE_DIR, 'not_a_dam.db')
 DAM_STATUS_DB_PATH = os.path.join(WORKSPACE_DIR, 'dam_status.db')
 PLANET_API_KEY_FILE = 'planet_api_key.txt'
@@ -90,7 +90,7 @@ def update_is_a_dam():
         "UPDATE base_table "
         "SET dam_in_image = ? "
         "WHERE image_path = ?",
-        (payload['dam_in_image'], payload['image_url']))
+        (payload['dam_in_image'], os.path.normpath(payload['image_url'])))
     cursor.close()
     connection.commit()
     return flask.jsonify({'image_url': get_unprocessed_image_path()})
@@ -110,7 +110,7 @@ def get_unprocessed_image_path():
         "SELECT image_path "
         "FROM base_table "
         "WHERE dam_in_image is NULL;")
-    return str(cursor.fetchone()[0])
+    return os.path.normpath(str(cursor.fetchone()[0]))
 
 
 @retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
@@ -268,40 +268,40 @@ def image_candidate_worker():
                         quad_download_url, quad_download_raster_path,
                         skip_if_target_exists=True)
 
-                stiched_image_path = os.path.join(
+                stitched_image_path = os.path.join(
                     PLANET_STITCHED_IMAGERY_DIR,
                     '_'.join([
                         os.path.basename(path).replace('.tif', '')
                         for path in sorted(
                             quad_download_dict['quad_target_path_list'])]) + '.tif')
-                LOGGER.info("stiched image path: %s", stiched_image_path)
-                if os.path.exists(stiched_image_path):
+                LOGGER.info("stitched image path: %s", stitched_image_path)
+                if os.path.exists(stitched_image_path):
                     try:
-                        r = gdal.OpenEx(stiched_image_path)
+                        r = gdal.OpenEx(stitched_image_path)
                         if not r:
                             raise ValueError(
                                 '%s not a raster' %
-                                stiched_image_path)
+                                stitched_image_path)
                     except:
-                        os.remove(stiched_image_path)
+                        os.remove(stitched_image_path)
                         stitch_rasters(
                             quad_download_dict['quad_target_path_list'],
-                            stiched_image_path),
+                            stitched_image_path),
                 else:
                     stitch_rasters(
                         quad_download_dict['quad_target_path_list'],
-                        stiched_image_path)
+                        stitched_image_path)
 
-                clipped_gsw_tile_path = os.path.join(
+                clipped_gsw_tile_path = os.path.normpath(os.path.join(
                     NOT_DAM_IMAGERY_DIR,
                     '_'.join([str(_) for _ in quad_download_dict[
-                        'dam_lat_lng_bb']])+'.png')
+                        'dam_lat_lng_bb']])+'.png'))
                 LOGGER.debug(
                     'clipping to %s %s', clipped_gsw_tile_path,
                     quad_download_dict['dam_lat_lng_bb'])
 
                 clip_raster(
-                    stiched_image_path,
+                    stitched_image_path,
                     quad_download_dict['dam_lat_lng_bb'],
                     clipped_gsw_tile_path)
                 LOGGER.debug('clipped %s', clipped_gsw_tile_path)
@@ -316,6 +316,8 @@ def image_candidate_worker():
                         str(quad_download_dict['dam_lat_lng_bb'])))
                 cursor.close()
                 connection.commit()
+                # all done get one more!
+                IMAGE_CANDIDATE_QUEUE.put(1)
     except:
         LOGGER.exception('validation queue worker crashed.')
         global VALIDATAION_WORKER_DIED
@@ -446,7 +448,6 @@ def clip_raster(
 
 if __name__ == '__main__':
     DB_CONN_THREAD_MAP = {}
-    APP.run(host='0.0.0.0', port=8080)
     for dir_path in [
             PLANET_QUADS_DIR, NOT_DAM_IMAGERY_DIR, GSW_DIR,
             PLANET_STITCHED_IMAGERY_DIR]:
@@ -502,7 +503,7 @@ if __name__ == '__main__':
     build_db_task.join()
 
     IMAGE_CANDIDATE_QUEUE = queue.Queue()
-    IMAGE_CANDIDATE_QUEUE.put(1)
+    IMAGE_CANDIDATE_QUEUE.put(10)
     image_candidate_thread = threading.Thread(target=image_candidate_worker)
     image_candidate_thread.start()
 
