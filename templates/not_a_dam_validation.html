@@ -66,6 +66,7 @@
     <button id="no_dam" class="ui-button ui-widget ui-corner-all">
         No dam in this image.
     </button>
+    <div id="summary"></div>
 </body>
 <script type="text/javascript">
 
@@ -95,6 +96,7 @@
                 console.log(image_url);
                 $('#dam_image').html(
                     "<img src=\"" + image_url + "\"/>");
+                get_summary();
                 $('#no_dam').prop('disabled',false).css('opacity',1.0);
                 $('#no_dam').text('No dam in this image.');
                 $('#is_a_dam').prop('disabled',false).css('opacity',1.0);
@@ -102,6 +104,25 @@
             }
         });
     };
+
+    function get_summary() {
+        $.ajax({
+            url: '/summary',
+            type: 'GET',
+            success: function (data) {
+                $('#summary').html(
+                    '<p>Images with dams: ' + data['with_dam_count'] + '</p>' +
+                    '<p>Images with NO dams: ' + data['with_no_dam_count'] + '</p>' +
+                    '<p>Images buffered to process: ' + data['unprocessed_count'] + '</p>');
+            },
+            error: function (request, status, error) {
+                $('#summary').html('error in fetching summary: ' + error);
+            },
+        });
+    };
+
+    get_summary();
+    setInterval(get_summary, 5000);
 
     $('#no_dam').click(function (e) {
         $('#no_dam').prop('disabled',true).css('opacity',0.5);

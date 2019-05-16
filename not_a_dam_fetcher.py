@@ -99,10 +99,37 @@ def update_is_a_dam():
 @APP.route('/summary')
 def render_summary():
     """Get a point that has not been validated."""
-    return 'summary page'
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT count(1) "
+        "FROM base_table "
+        "WHERE dam_in_image is NULL;")
+    unprocessed_count = int(cursor.fetchone()[0])
+
+    cursor.execute(
+        "SELECT count(1) "
+        "FROM base_table "
+        "WHERE dam_in_image is 0;")
+    with_no_dam_count = int(cursor.fetchone()[0])
+
+    cursor.execute(
+        "SELECT count(1) "
+        "FROM base_table "
+        "WHERE dam_in_image is 1;")
+    with_dam_count = int(cursor.fetchone()[0])
+    cursor.close()
+    connection.commit()
+    return flask.jsonify(
+        {
+            'unprocessed_count': unprocessed_count,
+            'with_no_dam_count': with_no_dam_count,
+            'with_dam_count': with_dam_count,
+        });
 
 
 @APP.route('/unprocessed_image')
+@retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
 def get_unprocessed_image_path():
     connection = get_db_connection()
     cursor = connection.cursor()
@@ -503,7 +530,7 @@ if __name__ == '__main__':
     build_db_task.join()
 
     IMAGE_CANDIDATE_QUEUE = queue.Queue()
-    IMAGE_CANDIDATE_QUEUE.put(10)
+    IMAGE_CANDIDATE_QUEUE.put(10000)
     image_candidate_thread = threading.Thread(target=image_candidate_worker)
     image_candidate_thread.start()
 
