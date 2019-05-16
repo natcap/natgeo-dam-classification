@@ -115,9 +115,8 @@
             type: 'GET',
             success: function (data) {
                 $('#summary').html(
-                    '<p>Images with dams: ' + data['with_dam_count'] + '</p>' +
-                    '<p>Images with NO dams: ' + data['with_no_dam_count'] + '</p>' +
-                    '<p>Images buffered to process: ' + data['unprocessed_count'] + '</p>');
+                    '<p>Validated images with NO dams: ' + data['with_no_dam_count'] + '</p>' +
+                    '<p>Images waiting to validate: ' + data['unprocessed_count'] + '</p>');
             },
             error: function (request, status, error) {
                 $('#summary').html('error in fetching summary: ' + error);
