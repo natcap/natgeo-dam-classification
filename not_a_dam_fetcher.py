@@ -135,7 +135,8 @@ def get_unprocessed_image_path():
     cursor.execute(
         "SELECT image_path "
         "FROM base_table "
-        "WHERE dam_in_image is NULL;")
+        "WHERE dam_in_image is NULL "
+        "ORDER BY RANDOM() LIMIT 1;")
     return os.path.normpath(str(cursor.fetchone()[0]))
 
 
@@ -563,4 +564,3 @@ if __name__ == '__main__':
     connection.commit()
 
     APP.run(host='0.0.0.0', port=8080)
-    # this makes a connection per thread
