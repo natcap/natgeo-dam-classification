@@ -61,7 +61,7 @@
         <img src="{{ image_url }}"/>
     </div>
     <button id="is_a_dam" class="ui-button ui-widget ui-corner-all">
-        There is a dam in this image.
+        Dam in this image or bad image.
     </button>
     <button id="no_dam" class="ui-button ui-widget ui-corner-all">
         No dam in this image.
@@ -100,7 +100,7 @@
                 $('#no_dam').prop('disabled',false).css('opacity',1.0);
                 $('#no_dam').text('No dam in this image.');
                 $('#is_a_dam').prop('disabled',false).css('opacity',1.0);
-                $('#is_a_dam').text('There is a dam in this image.');
+                $('#is_a_dam').text('Dam in this image or bad image.');
             }
         });
     };
