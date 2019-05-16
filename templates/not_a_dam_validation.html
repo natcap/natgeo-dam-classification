@@ -61,10 +61,10 @@
         <img src="{{ image_url }}"/>
     </div>
     <button id="is_a_dam" class="ui-button ui-widget ui-corner-all">
-        Dam in this image or bad image.
+        Dam present/bad image/unsure
     </button>
     <button id="no_dam" class="ui-button ui-widget ui-corner-all">
-        No dam in this image.
+        No dam in this image
     </button>
     <div id="summary"></div>
 </body>
@@ -98,9 +98,9 @@
                     "<img src=\"" + image_url + "\"/>");
                 get_summary();
                 $('#no_dam').prop('disabled',false).css('opacity',1.0);
-                $('#no_dam').text('No dam in this image.');
+                $('#no_dam').text('No dam in this image');
                 $('#is_a_dam').prop('disabled',false).css('opacity',1.0);
-                $('#is_a_dam').text('Dam in this image or bad image.');
+                $('#is_a_dam').text('Dam present/bad image/unsure');
             }
         });
     };
