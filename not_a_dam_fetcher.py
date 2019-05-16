@@ -81,13 +81,24 @@ def update_is_a_dam():
     """Called when there is a dam image that's classified."""
     payload = json.loads(flask.request.data.decode('utf-8'))
     LOGGER.debug(payload)
-    return flask.jsonify({'image_url': 'image_url_goes_here'})
+    return flask.jsonify({'image_url': get_unprocessed_image_path()})
 
 
 @APP.route('/summary')
 def render_summary():
     """Get a point that has not been validated."""
     return 'summary page'
+
+
+@APP.route('/unprocessed_image')
+def get_unprocessed_image_path():
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT image_path "
+        "FROM base_table "
+        "WHERE dam_in_image is NULL;")
+    return str(cursor.fetchone()[0])
 
 
 @retry(wait_exponential_multiplier=1000, wait_exponential_max=10000)
