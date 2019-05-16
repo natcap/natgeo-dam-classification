@@ -72,7 +72,9 @@
 <title>Is there a dam?</title>
 </head>
 <body>
-    <div id="dam_image"></div>
+    <div id="dam_image">
+        <img src="{{ image_url }}"/>
+    </div>
     <button id="is_a_dam" class="ui-button ui-widget ui-corner-all">
         There is a dam in this image.
     </button>
@@ -81,10 +83,13 @@
     </button>
 </body>
 <script type="text/javascript">
+
+    var image_url = "{{ image_url }}";
+
     function post_to_server(e){
         var payload = {
             'not_a_dam': true,
-            'image_id': 'image id goes here',
+            'image_id': image_url,
         };
         $.ajax({
             url: '/update_is_a_dam',
@@ -99,26 +104,22 @@
                 console.log(error);
             },
             success: function (data) {
+                image_url = data["image_url"];
                 console.log('success');
-                console.log(data["image_url"]);
+                console.log(image_url);
                 $('#dam_image').html(
-                    "<img src=\"" + data["image_url"] + "\"/>");
-                enable_button();
+                    "<img src=\"" + image_url + "\"/>");
+                $('#no_dam').prop('disabled',false).css('opacity',1.0);
+                $('#no_dam').text('No dam in this image.');
             }
         });
     };
 
-    function enable_button() {
-        $('#no_dam').prop('disabled',false).css('opacity',1.0);
-        $('#no_dam').text('No dam in this image.');
-        $('#no_dam').click(function (e) {
-            $('#no_dam').prop('disabled',true).css('opacity',0.5);
-            $('#no_dam').text('Submitting...');
-            post_to_server(e);
-        });
-    }
-
-    enable_button();
+    $('#no_dam').click(function (e) {
+        $('#no_dam').prop('disabled',true).css('opacity',0.5);
+        $('#no_dam').text('Submitting...');
+        post_to_server(e);
+    });
 
 </script>
 </html>

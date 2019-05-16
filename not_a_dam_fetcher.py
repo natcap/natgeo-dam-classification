@@ -69,8 +69,11 @@ def get_unvalidated_image():
     try:
         #connection = get_db_connection()
         #cursor = connection.cursor()
+        image_url = get_unprocessed_image_path()
+        LOGGER.debug(image_url)
         return flask.render_template(
             'not_a_dam_validation.html', **{
+                'image_url': image_url
             })
     except:
         LOGGER.exception('something bad happened')
