@@ -84,6 +84,14 @@ def update_is_a_dam():
     """Called when there is a dam image that's classified."""
     payload = json.loads(flask.request.data.decode('utf-8'))
     LOGGER.debug(payload)
+    connection = get_db_connection()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE base_table (dam_in_image) "
+        "VALUES (?);", (
+            payload['dam_in_image'])
+    cursor.close()
+    connection.commit()
     return flask.jsonify({'image_url': get_unprocessed_image_path()})
 
 

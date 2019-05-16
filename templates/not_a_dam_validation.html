@@ -86,9 +86,9 @@
 
     var image_url = "{{ image_url }}";
 
-    function post_to_server(e){
+    function post_to_server(e, dam_in_image){
         var payload = {
-            'not_a_dam': true,
+            'dam_in_image': dam_in_image,
             'image_id': image_url,
         };
         $.ajax({
@@ -111,6 +111,8 @@
                     "<img src=\"" + image_url + "\"/>");
                 $('#no_dam').prop('disabled',false).css('opacity',1.0);
                 $('#no_dam').text('No dam in this image.');
+                $('#is_a_dam').prop('disabled',false).css('opacity',1.0);
+                $('#is_a_dam').text('There is a dam in this image.');
             }
         });
     };
@@ -118,7 +120,12 @@
     $('#no_dam').click(function (e) {
         $('#no_dam').prop('disabled',true).css('opacity',0.5);
         $('#no_dam').text('Submitting...');
-        post_to_server(e);
+        post_to_server(e, false);
+    });
+    $('#is_a_dam').click(function (e) {
+        $('#is_a_dam').prop('disabled',true).css('opacity',0.5);
+        $('#is_a_dam').text('Submitting...');
+        post_to_server(e, true);
     });
 
 </script>
