@@ -218,6 +218,9 @@ def image_candidate_worker():
                         pass
                     IMAGE_CANDIDATE_QUEUE.put(1)
                     continue
+                gsw_raster = gdal.OpenEx(
+                    surface_water_raster_path, gdal.OF_RASTER)
+                gsw_band = gsw_raster.GetRasterBand(1)
 
                 box_size = int((BOUNDING_BOX_SIZE_M / PLANET_QUAD_CELL_SIZE))
                 # this is the GSW pixel size in degrees time 110km / degree
