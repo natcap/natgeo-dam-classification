@@ -176,9 +176,12 @@ def image_candidate_worker():
     while True:
         try:
             n_dams_to_fetch = IMAGE_CANDIDATE_QUEUE.get()
+            LOGGER.debug('%d to fetch', n_dams_to_fetch)
             if n_dams_to_fetch == 'STOP':
                 return
-            for _ in range(n_dams_to_fetch):
+            for fetch_index in range(n_dams_to_fetch):
+                LOGGER.debug(
+                    'working on %d of %d', fetch_index+1, n_dams_to_fetch)
                 lng = numpy.random.random()*360-180
                 lat = numpy.random.random()*180-90
 
@@ -342,6 +345,7 @@ def image_candidate_worker():
                     continue
 
                 # insert into the database
+                LOGGER.debug('putting %s into database', clipped_gsw_tile_path)
                 connection = get_db_connection()
                 cursor = connection.cursor()
                 cursor.execute(
@@ -351,6 +355,7 @@ def image_candidate_worker():
                         str(quad_download_dict['dam_lat_lng_bb'])))
                 cursor.close()
                 connection.commit()
+                LOGGER.debug('database updated, next dam!')
         except:
             LOGGER.exception('validation queue worker crashed.')
             global VALIDATAION_WORKER_DIED
