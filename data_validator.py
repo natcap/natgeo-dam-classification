@@ -853,5 +853,5 @@ if __name__ == '__main__':
         target_path_list=[complete_token_path],
         ignore_path_list=expected_database_path_list+[DATABASE_PATH],
         task_name='build the dam database')
-    APP.run(host='0.0.0.0', port=8080)
+    APP.run(host='0.0.0.0', port=8888)
     # this makes a connection per thread
