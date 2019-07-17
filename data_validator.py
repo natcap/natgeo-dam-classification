@@ -1,4 +1,4 @@
-"""Flask app to validata imagery and point locations."""
+"""Flask app to validate imagery and point locations."""
 import queue
 import re
 import zipfile
