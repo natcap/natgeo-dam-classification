@@ -1,4 +1,4 @@
-"""Flask app to validata imagery and point locations."""
+"""Flask app to generate imagery that does not contain a dam."""
 import shutil
 import subprocess
 import requests
